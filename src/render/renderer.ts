@@ -174,6 +174,12 @@ export class LaserRenderer {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
+  // 書き出し用に一時的に作ったときなど、GPUの資源をすぐ手放す
+  dispose() {
+    this.gl.getExtension('WEBGL_lose_context')?.loseContext();
+    this.res = null;
+  }
+
   draw(inst: Instances, p: DrawParams) {
     const gl = this.gl, r = this.res;
     if (!r || gl.isContextLost()) return;

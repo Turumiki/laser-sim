@@ -1,7 +1,11 @@
 import { OUTPUT_SIZES } from '../core/params';
 import type { Store } from '../core/store';
 import { el } from './dom';
+import { download, stamp } from './download';
+import { exportVideo } from './exporter';
 import type { Recorder } from './recorder';
+
+const EXPORT_TITLE = '今の設定で、頭から1コマずつ計算してMP4に書き出す（60fps、コマ落ちなし）';
 
 export function buildToolbar(root: HTMLElement, store: Store, recorder: Recorder, channel: string) {
   const play = el('button', { class: 'tb', title: '再生 / 一時停止 (Space)' });
@@ -19,7 +23,34 @@ export function buildToolbar(root: HTMLElement, store: Store, recorder: Recorder
   const dur = el('select', { class: 'tb', title: '録画時間' });
   for (const [v, t] of [[0, '手動'], [5, '5 s'], [10, '10 s'], [30, '30 s'], [60, '60 s']] as const) dur.append(new Option(t, String(v)));
   dur.value = '10';
-  const rec = el('button', { class: 'tb rec' }, 'REC');
+  const rec = el('button', { class: 'tb rec', title: '画面をそのまま録画する（リアルタイム）' }, 'REC');
+  const exp = el('button', { class: 'tb', title: EXPORT_TITLE }, '書き出し');
+  let abort: AbortController | null = null;
+  exp.addEventListener('click', async () => {
+    if (abort) { abort.abort(); return; }
+    abort = new AbortController();
+    const seconds = Number(dur.value) || 10;
+    const s = store.get();
+    let failed = '';
+    try {
+      exp.classList.add('on');
+      const blob = await exportVideo(s, {
+        seconds,
+        fps: 60,
+        signal: abort.signal,
+        onProgress: r => { exp.textContent = `中止 ${Math.round(r * 100)}%`; },
+      });
+      download(blob, `laser_${s.pattern}_${seconds}s_${stamp()}.mp4`);
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') failed = (e as Error).message;
+    } finally {
+      abort = null;
+      exp.classList.remove('on');
+      exp.textContent = failed ? '書き出し失敗' : '書き出し';
+      exp.title = failed || EXPORT_TITLE;
+      if (failed) setTimeout(() => { exp.textContent = '書き出し'; }, 4000);
+    }
+  });
   const time = el('span', { class: 'time' }, '0:00.0');
   rec.addEventListener('click', () => {
     if (recorder.recording) recorder.stop();
@@ -46,7 +77,7 @@ export function buildToolbar(root: HTMLElement, store: Store, recorder: Recorder
     el('span', { class: 'seg' }, clean, scan),
     size,
     el('span', { class: 'grow' }),
-    dur, rec, time,
+    dur, exp, rec, time,
     el('span', { class: 'sep' }),
     openOut, copy,
   );

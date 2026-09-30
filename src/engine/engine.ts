@@ -64,6 +64,10 @@ export class Engine {
     });
   }
 
+  dispose() {
+    this.renderer.dispose();
+  }
+
   get segments() {
     return this.inst.count;
   }
