@@ -12,15 +12,23 @@ import { EYE_GAIN, MAX_MIRROR } from '../core/color';
 const clampMirror = (v: number) => Math.max(-MAX_MIRROR, Math.min(MAX_MIRROR, v));
 
 export interface Rig {
-  // 走査角（片側, rad）。点の座標1がこの角度になる
-  halfAngle: number;
   // プロジェクターから壁までの距離
   distance: number;
   // ヘイズの濃さ（ビームの明るさ）
   haze: number;
 }
 
-// プロジェクター1台の置き場所と向き。全台が同じ映像ソースを出す
+// 1台ぶんの描く材料。チャンネルごとに設定とシミュレーションが違う
+export interface Source {
+  settings: Readonly<Settings>;
+  scanner: Scanner;
+  // 光を積算する時間（スキャンのとき）
+  tau: number;
+  // ベクター表示のときの今のフレーム
+  frame: Frame | null;
+}
+
+// プロジェクター1台の置き場所と向き
 export interface Projector {
   pos: readonly [number, number, number];
   // 左右の向き（rad）。正で左を向く
@@ -233,6 +241,8 @@ export class Beams {
   private rig: Rig;
   // 点の座標はサイズを掛ける前の値なので、ここで掛ける
   private scale = 1;
+  // 最大走査角の半分（rad）。台ごとに、そのチャンネルの設定から
+  private half = 0.35;
   private pincushion = true;
   // 色ごとの見かけの明るさ
   private gain: readonly number[] = [1, 1, 1];
@@ -253,7 +263,7 @@ export class Beams {
 
   // 点の座標 → ビームが当たる位置。戻り値は奥行き（何にも当たらなければ Infinity）
   private hit(x: number, y: number, out: number[]) {
-    const a = this.rig.halfAngle * this.scale;
+    const a = this.half * this.scale;
     // 2枚のミラーで振るので、Yを振るほどXが広がる（糸巻きゆがみ）
     const ax = clampMirror(x * a), ay = clampMirror(y * a);
     const warp = this.pincushion ? 1 / Math.cos(ay) : 1;
@@ -272,9 +282,13 @@ export class Beams {
     return t;
   }
 
-  private use(p: Projector) {
+  private use(p: Projector, s: Readonly<Settings>) {
     this.proj = p;
     this.cached = -1;
+    this.half = s.scanAngle / 2 * Math.PI / 180;
+    this.scale = s.size;
+    this.pincushion = s.pincushion;
+    this.gain = s.eye ? EYE_GAIN : [1, 1, 1];
     this.cos = Math.cos(p.yaw);
     this.sin = Math.sin(p.yaw);
     this.sheets.origin = this.rays.origin = this.wall.origin = p.pos;
@@ -340,10 +354,7 @@ export class Beams {
     s.count++;
   }
 
-  private begin(s: Readonly<Settings>) {
-    this.scale = s.size;
-    this.pincushion = s.pincushion;
-    this.gain = s.eye ? EYE_GAIN : [1, 1, 1];
+  private begin() {
     this.cached = -1;
     this.sheets.count = this.rays.count = this.wall.count = 0;
   }
@@ -355,11 +366,16 @@ export class Beams {
   }
 
   // スキャン: 露光時間内に通った軌跡。遅く動いた所ほど明るい（2D出力と同じ考え方）
-  fromScanner(sc: Scanner, s: Readonly<Settings>, tau: number) {
-    this.begin(s);
-    for (const p of this.projectors) {
-      this.use(p);
-      this.scanOne(sc, s, tau);
+  // 台ごとに、割り当てたチャンネルの映像ソースで描く（ソースは台の順に繰り返して使う）
+  draw(sources: readonly Source[]) {
+    this.begin();
+    if (sources.length) {
+      this.projectors.forEach((p, k) => {
+        const src = sources[k % sources.length], s = src.settings;
+        this.use(p, s);
+        if (s.mode === 'scan') this.scanOne(src.scanner, s, src.tau);
+        else if (src.frame) this.frameOne(src.frame, s);
+      });
     }
     this.end();
   }
@@ -388,14 +404,6 @@ export class Beams {
   }
 
   // ベクター: 今のフレームの図形をそのまま、均一な明るさで
-  fromFrame(f: Frame, s: Readonly<Settings>) {
-    this.begin(s);
-    for (const p of this.projectors) {
-      this.use(p);
-      this.frameOne(f, s);
-    }
-    this.end();
-  }
 
   private frameOne(f: Frame, s: Readonly<Settings>) {
     const haze = this.rig.haze * s.bright;

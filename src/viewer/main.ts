@@ -13,16 +13,42 @@ import { Store } from '../core/store';
 import { startLoop } from '../engine/loop';
 import { Simulation } from '../engine/simulation';
 import { connectSync } from '../sync/client';
-import { Beams, type Projector, type Rig } from './beams';
+import { fastTooltips } from '../control/tooltip';
+import { Beams, type Projector, type Rig, type Source } from './beams';
 import { ROOMS, Surfaces, TARGETS, type TargetKind } from './surfaces';
 
 // レーザーが空間にどう出るかを3Dで見る（隠し機能）。設定は操作画面と同期する
 const params = new URLSearchParams(location.search);
 const channel = params.get('ch') || 'default';
 
-const store = new Store({ ...DEFAULTS, ...sanitize(Object.fromEntries(params)) });
-const sync = connectSync(store, { channel, role: 'output' });
-const sim = new Simulation(store);
+// チャンネルごとの映像ソース。台ごとに違うチャンネルを割り当てられるので、使うチャンネルの数だけ持つ
+interface Feed {
+  store: Store;
+  sim: Simulation;
+  sync: ReturnType<typeof connectSync>;
+}
+const feeds = new Map<string, Feed>();
+const feedOf = (ch: string): Feed => {
+  let f = feeds.get(ch);
+  if (!f) {
+    const store = new Store({ ...DEFAULTS, ...sanitize(Object.fromEntries(params)) });
+    f = { store, sim: new Simulation(store), sync: connectSync(store, { channel: ch, role: 'output' }) };
+    feeds.set(ch, f);
+  }
+  return f;
+};
+// 台に割り当てるチャンネルの並び。使わなくなったチャンネルは接続を切る
+let feedOrder: Feed[] = [];
+const useChannels = (list: string[]) => {
+  const names = list.length ? list : [channel];
+  feedOrder = names.map(feedOf);
+  for (const [ch, f] of feeds) {
+    if (!names.includes(ch)) { f.sync.close(); feeds.delete(ch); }
+  }
+};
+
+const parseChannels = (text: string) =>
+  text.split(',').map(t => t.trim()).filter(t => /^[A-Za-z0-9_-]{1,40}$/.test(t)).slice(0, 8);
 
 // ビューア独自の設定（同期しない）
 type Quality = 'high' | 'mid' | 'low';
@@ -66,6 +92,8 @@ function layout(count: number, spacing: number, mode: Layout): Projector[] {
 }
 
 interface ViewerSettings {
+  // 台に割り当てるチャンネル（カンマ区切り）
+  channels: string;
   quality: Quality;
   haze: number;
   distance: number;
@@ -82,14 +110,16 @@ interface ViewerSettings {
 const RIG_KEY = 'laser:viewer';
 const vs: ViewerSettings = {
   // スマホのGPUは非力なので、初めて開いたときは軽い画質にする
+  channels: channel,
   quality: matchMedia('(pointer: coarse)').matches ? 'low' : 'mid', haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, extinction: 0.3, target: 'wall', count: 1, spacing: 2, layout: 'parallel', view: 'audience',
   ...loadLocal<ViewerSettings>(RIG_KEY),
 };
 if (!VIEWS.some(v => v.id === vs.view)) vs.view = 'audience';
-const rig: Rig = { halfAngle: 0, distance: 0, haze: 0 };
+// URLでチャンネルを指定して開いたときは、それを使う
+if (params.has('ch')) vs.channels = channel;
+useChannels(parseChannels(vs.channels));
+const rig: Rig = { distance: 0, haze: 0 };
 const applyRig = () => {
-  // 走査角はレーザー機の設定（操作画面と共有）
-  rig.halfAngle = store.get().scanAngle / 2 * Math.PI / 180;
   rig.distance = vs.distance;
   rig.haze = vs.haze;
 };
@@ -227,8 +257,9 @@ addEventListener('resize', resize);
 buildComposer();
 
 buildRigPanel();
+fastTooltips();
 // 開発中だけ、ブラウザのコンソールから中身を見られるようにする
-if (import.meta.env.DEV) Object.assign(window, { laser3d: { renderer, store } });
+if (import.meta.env.DEV) Object.assign(window, { laser3d: { renderer, feeds } });
 
 // ?stats=1 で、fps と1フレームの処理時間（CPU側）を出す
 const stats = params.get('stats') === '1' ? document.body.appendChild(document.createElement('div')) : null;
@@ -241,12 +272,22 @@ if (stats) {
 startLoop(dt => {
   const t0 = performance.now();
   if (dt > 0) fps += (1 / dt - fps) * 0.05;
-  sim.update(dt);
-  applyRig();
-  sim.syncAnim(sync.time.animNow());
-  const s = store.get();
-  if (s.mode === 'scan') beams.fromScanner(sim.scanner, s, sim.exposureTime());
-  else beams.fromFrame(sim.currentFrame(), s);
+  for (const f of feeds.values()) {
+    f.sim.update(dt);
+    f.sim.syncAnim(f.sync.time.animNow());
+  }
+  // チャンネルごとに1回だけフレームを作り、同じチャンネルの台で使い回す
+  const sources = new Map<Feed, Source>();
+  for (const f of new Set(feedOrder)) {
+    const s = f.store.get();
+    sources.set(f, {
+      settings: s,
+      scanner: f.sim.scanner,
+      tau: f.sim.exposureTime(),
+      frame: s.mode === 'scan' ? null : f.sim.currentFrame(),
+    });
+  }
+  beams.draw(feedOrder.map(f => sources.get(f)!));
   beams.haze.uTime.value = performance.now() / 1000;
   controls.update();
   composer.render();
@@ -255,7 +296,7 @@ startLoop(dt => {
 
 function buildRigPanel() {
   const panel = document.getElementById('rig')!;
-  const rows: [Exclude<keyof ViewerSettings, 'target' | 'quality' | 'layout' | 'view'>, string, number, number, number][] = [
+  const rows: [Exclude<keyof ViewerSettings, 'target' | 'quality' | 'layout' | 'view' | 'channels'>, string, number, number, number][] = [
     ['count', '台数', 1, 8, 1],
     ['spacing', '間隔', 0.5, 10, 0.5],
     ['haze', 'ヘイズ', 0.1, 5, 0.05],
@@ -291,6 +332,20 @@ function buildRigPanel() {
   layoutRow.title = '複数台の並べ方。扇: 外側ほど外へ向ける / 左右対称: 右半分を左右反転';
   layoutRow.append('並べ方', layoutSel);
   panel.append(layoutRow);
+
+  const chRow = document.createElement('label');
+  const chInput = Object.assign(document.createElement('input'), { type: 'text', value: vs.channels, spellcheck: false });
+  chInput.placeholder = 'left,right';
+  chInput.addEventListener('change', () => {
+    vs.channels = parseChannels(chInput.value).join(',') || channel;
+    chInput.value = vs.channels;
+    useChannels(parseChannels(vs.channels));
+    saveLocal(RIG_KEY, vs);
+  });
+  chRow.classList.add('wide');
+  chRow.title = '台に割り当てるチャンネル。カンマ区切りで、左の台から順に繰り返して使う（例: left,right）';
+  chRow.append('チャンネル', chInput);
+  panel.append(chRow);
   const targetRow = document.createElement('label');
   const select = document.createElement('select');
   for (const t of TARGETS) select.add(new Option(t.label, t.id));

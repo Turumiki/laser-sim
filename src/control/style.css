@@ -21,7 +21,8 @@ button, input, select { font: inherit; color: inherit; }
 #app {
   display: grid;
   height: 100vh;
-  grid-template: "tool tool" 30px "view insp" 1fr "pat insp" 150px "stat stat" 20px / 1fr 300px;
+  /* 中身が横に長くても（タイムラインなど）右の列が押し出されないよう、左の列は minmax(0, 1fr) */
+  grid-template: "tool tool" 30px "view insp" 1fr "pat insp" 172px "stat stat" 20px / minmax(0, 1fr) 300px;
   gap: 1px;
   background: var(--line);
 }
@@ -73,7 +74,7 @@ button, input, select { font: inherit; color: inherit; }
 }
 
 /* インスペクター */
-#inspector { grid-area: insp; overflow-y: auto; background: var(--bg1); }
+#inspector { grid-area: insp; overflow-y: auto; overflow-x: hidden; background: var(--bg1); }
 .group > h3 {
   display: flex;
   align-items: center;
@@ -93,7 +94,7 @@ button, input, select { font: inherit; color: inherit; }
 .rows { padding: 4px 0 6px; }
 .row {
   display: grid;
-  grid-template-columns: 104px 1fr;
+  grid-template-columns: 96px minmax(0, 1fr);
   align-items: center;
   min-height: 22px;
   padding: 0 8px 0 14px;
@@ -135,7 +136,7 @@ button, input, select { font: inherit; color: inherit; }
 .presets .tb { height: 18px; padding: 0 6px; font-size: 11px; }
 
 /* パターン */
-#bottom { grid-area: pat; display: flex; flex-direction: column; min-height: 0; background: var(--bg1); }
+#bottom { grid-area: pat; display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--bg1); }
 .tabs { display: flex; gap: 1px; background: var(--line); border-bottom: 1px solid var(--line); }
 .tabs button { height: 22px; padding: 0 12px; border: 0; background: var(--bg2); color: var(--dim); font-size: 11px; }
 .tabs button.on { background: var(--bg1); color: var(--text); }
@@ -206,24 +207,30 @@ button, input, select { font: inherit; color: inherit; }
 /* シーケンス */
 #sequence { display: flex; flex-direction: column; gap: 6px; }
 #sequence[hidden] { display: none; }
-.seq-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.seq-bar .sep { width: 1px; align-self: stretch; margin: 2px 2px; background: var(--bg3); }
-.seq-bar .grow { flex: 1; }
-.seq-bar select.tb { padding: 0 4px; }
-.seq-tools { display: inline-flex; align-items: center; gap: 6px; }
-.seq-tools[hidden], .seq-bar button[hidden] { display: none; }
+.seq-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 24px; }
+.seq-row[hidden], .seq-group[hidden] { display: none; }
+.seq-row .sep { width: 1px; align-self: stretch; margin: 2px 0; background: var(--bg3); }
+.seq-row .grow { flex: 1; }
+.seq-row select.tb { padding: 0 4px; min-width: 140px; }
+.seq-group { display: inline-flex; align-items: center; gap: 6px; }
+.seq-label { color: var(--dim); font-size: 11px; }
+.seq-note { color: var(--dim); font-size: 11px; }
+.tb.play { min-width: 76px; font-weight: 600; }
 .mini { display: inline-flex; align-items: center; gap: 4px; color: var(--dim); font-size: 11px; }
-.num { width: 52px; height: 20px; padding: 0 4px; border: 1px solid var(--line); border-radius: 2px; background: var(--bg0); font-variant-numeric: tabular-nums; }
-.num:disabled, .tb:disabled { opacity: .45; }
-.seq-info { color: var(--dim); font-size: 11px; font-variant-numeric: tabular-nums; }
-.strip { display: flex; gap: 2px; overflow-x: auto; padding-bottom: 2px; }
+.num { width: 56px; height: 20px; padding: 0 4px; border: 1px solid var(--line); border-radius: 2px; background: var(--bg0); font-variant-numeric: tabular-nums; }
+.tb:disabled { opacity: .45; }
+.seq-status { color: var(--text); font-size: 11px; font-variant-numeric: tabular-nums; }
+.strip { display: flex; gap: 3px; overflow-x: auto; padding-bottom: 4px; }
 .block {
+  position: relative;
   flex: none;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  height: 36px;
-  padding: 0 6px;
+  display: grid;
+  grid-template: "no name" auto "no beats" auto / auto 1fr;
+  column-gap: 6px;
+  align-content: center;
+  height: 44px;
+  min-width: 0;
+  padding: 3px 8px 0;
   border: 1px solid var(--bg3);
   border-radius: 2px;
   background: var(--bg2);
@@ -231,8 +238,27 @@ button, input, select { font: inherit; color: inherit; }
   overflow: hidden;
   white-space: nowrap;
 }
-.block small { margin-left: auto; color: var(--dim); font-variant-numeric: tabular-nums; }
-.block .swatch { flex: none; width: 4px; align-self: stretch; margin: 5px 0; border-radius: 1px; }
+.block .bar { position: absolute; left: 0; right: 0; top: 0; height: 3px; }
+.block .no { grid-area: no; color: var(--dim); font-size: 11px; font-variant-numeric: tabular-nums; }
+.block .name { grid-area: name; overflow: hidden; text-overflow: ellipsis; }
+.block small { grid-area: beats; color: var(--dim); font-size: 10px; }
+.block .fill { position: absolute; left: 0; bottom: 0; height: 3px; width: 0; background: var(--accent); }
 .block.sel { border-color: var(--accent); }
-.block.now { background: #2d3a4a; box-shadow: inset 0 -2px 0 var(--accent); }
+.block.now { background: #2d3a4a; }
 .empty { margin: 4px 0; color: var(--dim); }
+
+.tip {
+  position: fixed;
+  z-index: 10;
+  max-width: 280px;
+  padding: 4px 7px;
+  border: 1px solid var(--bg3);
+  border-radius: 2px;
+  background: #101010;
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-line;
+  pointer-events: none;
+}
+.tip[hidden] { display: none; }

@@ -9,6 +9,7 @@ import { buildInspector } from './inspector';
 import { buildPatternGrid } from './pattern-grid';
 import { buildSequence } from './sequence';
 import { buildTabs } from './tabs';
+import { fastTooltips } from './tooltip';
 import { Recorder } from './recorder';
 import { buildToolbar } from './toolbar';
 import { attachViewer } from './viewer';
@@ -33,7 +34,7 @@ const engine = new Engine(canvas, store);
 if (saved?.animT) engine.scanner.animT = saved.animT;
 
 let sync: SyncStatus = 'connecting';
-const sequence = buildSequence($('sequence'), store, msg => link.show(msg));
+const sequence = buildSequence($('sequence'), store, msg => link.show(msg), () => link.time.serverNow());
 const link = connectSync(store, {
   channel,
   role: 'control',
@@ -46,6 +47,7 @@ buildToolbar($('toolbar'), store, recorder, channel);
 buildInspector($('inspector'), store);
 buildPatternGrid($('patterns'), store);
 buildTabs($('bottom'));
+fastTooltips();
 attachViewer($('viewer'), canvas, store);
 
 addEventListener('keydown', e => {

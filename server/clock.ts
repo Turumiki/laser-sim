@@ -21,6 +21,11 @@ export class Clocks {
     return c;
   }
 
+  // 時間軸を頭（0）に戻す。複数チャンネルのショーを同時に始めるとき、動きの位置も揃える
+  reset(ch: string, data: Record<string, unknown>, t0: number) {
+    this.clocks.set(ch, { t0, anim: 0, rate: rateOf(data) });
+  }
+
   // 速さが変わる直前に、その時点の位置で区切ってから新しい速さにする
   update(ch: string, before: Record<string, unknown>, patch: Record<string, unknown>) {
     if (!TIME_KEYS.some(k => k in patch)) return false;

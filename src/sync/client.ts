@@ -41,6 +41,11 @@ export class TimeBase {
     this.offset = server - (t + rtt / 2);
   }
 
+  // サーバーの時計での今の時刻（ms）
+  serverNow() {
+    return Date.now() + this.offset;
+  }
+
   // 今のアニメーション時間。まだ届いていなければ null
   animNow(): number | null {
     const c = this.clock;
@@ -56,9 +61,10 @@ export function connectSync(store: Store, opts: Options) {
   let pending: Partial<Settings> | null = null;
   let flushTimer = 0;
   let retry = 0;
+  let closed = false;
   const time = new TimeBase();
   const ping = () => { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping', t: Date.now() })); };
-  setInterval(ping, 5000);
+  const pinger = setInterval(ping, 5000);
 
   // つながっていない間の変更は取っておき、つながり直したら送る
   let unsent: Partial<Settings> | null = null;
@@ -110,7 +116,7 @@ export function connectSync(store: Store, opts: Options) {
     ws.onclose = () => {
       opts.onStatus?.('closed');
       ws = null;
-      setTimeout(connect, Math.min(5000, 500 * 2 ** retry++));
+      if (!closed) setTimeout(connect, Math.min(5000, 500 * 2 ** retry++));
     };
   };
 
@@ -120,5 +126,11 @@ export function connectSync(store: Store, opts: Options) {
   const show = (msg: Record<string, unknown>) => {
     if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'show', ...msg }));
   };
-  return { time, show };
+  // もう使わないときに切る（つなぎ直さない）
+  const close = () => {
+    closed = true;
+    clearInterval(pinger);
+    ws?.close();
+  };
+  return { time, show, close };
 }

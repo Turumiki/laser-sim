@@ -28,6 +28,10 @@ export class ShowPlayer {
     return this.states.get(ch) ?? { playing: false, id: null, index: -1, startedAt: 0 };
   }
 
+  channels(): string[] {
+    return this.custom.keys();
+  }
+
   customOf(ch: string): Show | null {
     return (this.custom.get(ch).show as Show | undefined) ?? null;
   }
@@ -37,10 +41,12 @@ export class ShowPlayer {
     return BUILTIN_SHOWS.find(s => s.id === id) ?? null;
   }
 
-  play(ch: string, id: unknown) {
-    if (typeof id !== 'string' || !this.find(ch, id)) return;
-    this.states.set(ch, { playing: true, id, index: -1, startedAt: Date.now() });
+  // startedAt を揃えて渡すと、複数のチャンネルが同じ瞬間に切り替わる
+  play(ch: string, id: unknown, startedAt = Date.now()) {
+    if (typeof id !== 'string' || !this.find(ch, id)) return false;
+    this.states.set(ch, { playing: true, id, index: -1, startedAt });
     this.tick();
+    return true;
   }
 
   stop(ch: string) {

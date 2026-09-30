@@ -24,6 +24,10 @@ export class StateStore {
     this.dirty = true;
   }
 
+  keys(): string[] {
+    return Object.keys(this.data);
+  }
+
   get(ch: string): Data {
     return this.data[ch] ?? {};
   }

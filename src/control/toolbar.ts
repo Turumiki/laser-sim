@@ -34,6 +34,29 @@ export function buildToolbar(root: HTMLElement, store: Store, recorder: Recorder
     else recorder.start(Number(dur.value), `laser_${store.get().pattern}`, Number(store.get().fps));
   });
 
+  // チャンネルの切り替え。選ぶとそのチャンネルの操作画面を開き直す
+  const chSel = el('select', { class: 'tb', title: 'チャンネル。出力や3Dビューアと同じ名前のものが連動する' });
+  const NEW = '__new';
+  const fillChannels = (list: string[]) => {
+    chSel.replaceChildren();
+    for (const c of new Set([channel, ...list])) chSel.add(new Option(`ch: ${c}`, c));
+    chSel.add(new Option('＋ 新しいチャンネル…', NEW));
+    chSel.value = channel;
+  };
+  fillChannels([]);
+  fetch('/api/channels').then(r => r.json()).then(fillChannels).catch(() => {});
+  chSel.addEventListener('change', () => {
+    let next = chSel.value;
+    if (next === NEW) {
+      next = prompt('チャンネル名（英数字と _ - だけ）') ?? '';
+      if (!/^[A-Za-z0-9_-]{1,40}$/.test(next)) { chSel.value = channel; return; }
+    }
+    if (next === channel) return;
+    const q = new URLSearchParams(location.search);
+    if (next === 'default') q.delete('ch'); else q.set('ch', next);
+    location.search = q.toString();
+  });
+
   const openOut = el('button', { class: 'tb', title: '出力画面を別ウィンドウで開く' }, '出力を開く');
   openOut.addEventListener('click', () => window.open(outputPath(channel), `laser-output-${channel}`));
   const copy = el('button', { class: 'tb', title: 'OBSのブラウザソース用のURLをコピーする' }, 'URLをコピー');
@@ -56,7 +79,7 @@ export function buildToolbar(root: HTMLElement, store: Store, recorder: Recorder
     el('span', { class: 'grow' }),
     dur, exp, rec, time,
     el('span', { class: 'sep' }),
-    openOut, copy,
+    chSel, openOut, copy,
   );
 
   const refresh = () => {

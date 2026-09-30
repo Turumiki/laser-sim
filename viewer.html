@@ -13,8 +13,11 @@
     border: 1px solid #121212; border-radius: 2px; }
   #rig.hidden { display: none; }
   #rig label.with-button select { grid-column: 2 / 3; }
+  #rig label.wide input[type=text] { grid-column: 2 / 4; height: 20px; padding: 0 4px; color: #c8c8c8; background: #1b1b1b; border: 1px solid #121212; border-radius: 2px; font: inherit; }
   #rig label.with-button button { height: 20px; padding: 0; color: #c8c8c8; background: #1b1b1b; border: 1px solid #121212; border-radius: 2px; font: inherit; font-size: 11px; }
   #stats { position: absolute; left: 8px; top: 8px; padding: 2px 6px; color: #8b8b8b; background: rgba(0, 0, 0, .6); font: 11px/1.4 monospace; }
+  .tip { position: fixed; z-index: 10; max-width: 260px; padding: 4px 7px; border: 1px solid #383838; border-radius: 2px; background: #101010; color: #c8c8c8; font-size: 11px; line-height: 1.45; white-space: pre-line; pointer-events: none; }
+  .tip[hidden] { display: none; }
   #rig-toggle { position: absolute; top: 8px; right: 8px; height: 26px; padding: 0 12px; color: #c8c8c8; background: rgba(35, 35, 35, .92);
     border: 1px solid #121212; border-radius: 2px; font: inherit; }
   @media (max-width: 600px) { #rig { left: 8px; width: auto; } }

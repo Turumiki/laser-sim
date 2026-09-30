@@ -40,10 +40,27 @@ function broadcastShow(ch: string) {
   for (const ws of channels.get(ch) ?? []) if (ws.readyState === ws.OPEN) ws.send(msg);
 }
 
+// 使われているチャンネルの一覧（設定があるもの、カスタムのショーがあるもの、いまつながっているもの）
+function channelList() {
+  const all = new Set([...states.keys(), ...shows.channels(), ...channels.keys()]);
+  return [...all].sort();
+}
+
 function showCommand(ch: string, msg: Record<string, unknown>) {
   if (msg.action === 'play') shows.play(ch, msg.id);
   else if (msg.action === 'stop') shows.stop(ch);
   else if (msg.action === 'save') shows.saveCustom(ch, msg.show);
+  else if (msg.action === 'playAll') {
+    // 全チャンネルを同じ瞬間に始め、アニメーションの時間軸も頭に揃える
+    const t0 = Date.now();
+    for (const c of channelList()) {
+      if (!shows.play(c, msg.id, t0)) continue;
+      clocks.reset(c, states.get(c), t0);
+      broadcast(c, {}, null, true);
+    }
+  } else if (msg.action === 'stopAll') {
+    for (const c of channelList()) shows.stop(c);
+  }
 }
 
 function broadcast(ch: string, data: Record<string, unknown>, from: string | null, withClock: boolean) {
@@ -99,6 +116,7 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL) {
     return json(res, 200, { state: shows.state(ch), custom: shows.customOf(ch) });
   }
   if (url.pathname === '/api/info') return json(res, 200, { lan: lanUrls(), port: PORT });
+  if (url.pathname === '/api/channels') return json(res, 200, channelList());
   json(res, 404, { error: 'not found' });
 }
 
