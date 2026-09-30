@@ -39,6 +39,8 @@ export interface Settings {
   bright: number;
   head: boolean;
   showBlank: boolean;
+  rolling: boolean;
+  readout: number;
 
   colorMode: ColorMode;
   color: string;
@@ -149,6 +151,8 @@ export const PARAMS: readonly ParamDef[] = [
   { kind: 'number', key: 'timeScale', label: 'スロー', hint: '時間の進み方。1で実時間', group: 'debug', min: 0.0003, max: 1, log: true, digits: 4, unit: '×' },
   { kind: 'bool', key: 'head', label: '先頭の点', hint: '現在のビーム位置を表示する', group: 'debug' },
   { kind: 'bool', key: 'showBlank', label: 'ブランキング表示', hint: '消灯中の移動経路を灰色で表示する', group: 'debug' },
+  { kind: 'bool', key: 'rolling', label: 'ローリングシャッター', hint: 'スマホや一般的なビデオカメラのように、画面を上の行から順に時間をずらして撮る。速く動くレーザーは形が曲がったり波打ったりして写る。スキャンのときだけ効く。クッキー用では使わない', group: 'debug', inactive: s => s.mode !== 'scan' || s.look === 'source' },
+  { kind: 'number', key: 'readout', label: '読み出し時間', hint: '画面の上から下まで読み出すのにかかる時間。スマホでだいたい10〜30ms', group: 'debug', inactive: s => !s.rolling || s.mode !== 'scan' || s.look === 'source', min: 1, max: 40, digits: 1, unit: 'ms' },
 ];
 
 export const DEFAULTS: Readonly<Settings> = {
@@ -183,6 +187,8 @@ export const DEFAULTS: Readonly<Settings> = {
   bright: 1,
   head: false,
   showBlank: false,
+  rolling: false,
+  readout: 16,
   colorMode: 'single',
   color: '#00ff40',
 };

@@ -5,6 +5,7 @@ layout(location=0) in vec2 a_corner;
 layout(location=1) in vec4 a_seg;
 layout(location=2) in vec4 a_ecol;
 layout(location=3) in float a_glow;
+layout(location=4) in float a_age;
 uniform vec2 u_res;
 uniform float u_sigma;
 uniform float u_sigmaG;
@@ -14,6 +15,7 @@ flat out float v_len;
 flat out float v_e;
 flat out vec3 v_col;
 flat out float v_glow;
+flat out float v_age;
 void main() {
   vec2 p0 = a_seg.xy, p1 = a_seg.zw, d = p1 - p0;
   float len = length(d);
@@ -28,6 +30,7 @@ void main() {
   v_e = a_ecol.x;
   v_col = a_ecol.yzw;
   v_glow = g;
+  v_age = a_age;
   vec2 clip = world / u_res * 2.0 - 1.0;
   gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
 }`;
@@ -40,8 +43,12 @@ flat in float v_len;
 flat in float v_e;
 flat in vec3 v_col;
 flat in float v_glow;
+flat in float v_age;
 uniform float u_sigma;
 uniform float u_sigmaG;
+uniform vec2 u_res;
+// ローリングシャッター: x = 読み出し時間（露光時間を1とする。0で無効）, y = 1 なら残像（指数）
+uniform vec2 u_roll;
 out vec4 o;
 float erf1(float x) {
   float s = sign(x);
@@ -56,10 +63,18 @@ float sweep(vec2 q, float len, float s) {
   float along = 0.5 * (erf1((len - q.x) * k) + erf1(q.x * k));
   return exp(-q.y * q.y / (2.0 * s * s)) * along / len;
 }
+// 上の行ほど早く撮り終わる。その行が撮っている時間帯に、この線分の光が入るか
+float shutter() {
+  if (u_roll.x <= 0.0) return 1.0;
+  float row = 1.0 - gl_FragCoord.y / u_res.y;
+  float a = v_age - (1.0 - row) * u_roll.x;
+  if (a < 0.0) return 0.0;
+  return u_roll.y > 0.5 ? exp(-a) : step(a, 1.0);
+}
 void main() {
   float I = sweep(v_local, v_len, u_sigma);
   if (v_glow > 0.0) I += v_glow * 0.12 * sweep(v_local, v_len, u_sigmaG);
-  o = vec4(v_col * (v_e * I), 1.0);
+  o = vec4(v_col * (v_e * I * shutter()), 1.0);
 }`;
 
 const TONE_VS = `#version 300 es
@@ -99,6 +114,9 @@ export interface DrawParams {
   exposure: number;
   // クッキー用（光量に比例した値）で書く
   linear: boolean;
+  // ローリングシャッターの読み出し時間（露光時間を1とする。0で無効）と、残像（指数）かどうか
+  roll: number;
+  rollExp: boolean;
   // この矩形の外には描かない [x, y, w, h]（上が原点）
   clip: readonly [number, number, number, number] | null;
 }
@@ -159,10 +177,13 @@ export class LaserRenderer {
     gl.enableVertexAttribArray(3);
     gl.vertexAttribPointer(3, 1, gl.FLOAT, false, bytes, 32);
     gl.vertexAttribDivisor(3, 1);
+    gl.enableVertexAttribArray(4);
+    gl.vertexAttribPointer(4, 1, gl.FLOAT, false, bytes, 36);
+    gl.vertexAttribDivisor(4, 1);
     gl.bindVertexArray(null);
 
     const u: Resources['u'] = {};
-    for (const n of ['u_res', 'u_sigma', 'u_sigmaG', 'u_glow']) u[n] = gl.getUniformLocation(splat, n);
+    for (const n of ['u_res', 'u_sigma', 'u_sigmaG', 'u_glow', 'u_roll']) u[n] = gl.getUniformLocation(splat, n);
     u.u_tex = gl.getUniformLocation(tone, 'u_tex');
     u.u_exposure = gl.getUniformLocation(tone, 'u_exposure');
     u.u_linear = gl.getUniformLocation(tone, 'u_linear');
@@ -215,6 +236,7 @@ export class LaserRenderer {
       gl.uniform1f(r.u.u_sigma, p.sigma);
       gl.uniform1f(r.u.u_sigmaG, p.sigmaG);
       gl.uniform1f(r.u.u_glow, p.glow);
+      gl.uniform2f(r.u.u_roll, p.roll, p.rollExp ? 1 : 0);
       gl.bindVertexArray(r.vao);
       gl.bindBuffer(gl.ARRAY_BUFFER, r.instBuf);
       const used = inst.data.subarray(0, inst.count * STRIDE);
