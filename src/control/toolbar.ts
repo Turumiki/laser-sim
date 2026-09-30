@@ -16,7 +16,7 @@ export function buildToolbar(root: HTMLElement, store: Store, recorder: Recorder
   scan.addEventListener('click', () => store.set({ mode: 'scan' }));
 
   const display = el('button', { class: 'tb', title: 'そのまま画面に映す見た目。強い所は白く飛び、にじみが付く' }, '表示用');
-  const source = el('button', { class: 'tb', title: 'クッキーやボリュームライトの元にする映像。白飛び・にじみなし、明るさは光量に比例' }, '光源用');
+  const source = el('button', { class: 'tb', title: 'ライトのクッキー（光の模様を決めるテクスチャ）やボリュームライトの元にする映像。白飛び・にじみなし、明るさは光量に比例' }, 'クッキー用');
   display.addEventListener('click', () => store.set({ look: 'display' }));
   source.addEventListener('click', () => store.set({ look: 'source' }));
 
