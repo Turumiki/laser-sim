@@ -50,7 +50,12 @@ export const GROUPS: readonly { id: GroupId; label: string }[] = [
   { id: 'debug', label: '観察用' },
 ];
 
-interface ParamBase { label: string; group: GroupId }
+interface ParamBase {
+  label: string;
+  group: GroupId;
+  // ツールチップ
+  hint?: string;
+}
 
 export interface NumberParam extends ParamBase {
   kind: 'number';
@@ -80,43 +85,43 @@ export const OUTPUT_SIZES: Record<string, readonly [number, number]> = {
 };
 
 export const PARAMS: readonly ParamDef[] = [
-  { kind: 'enum', key: 'colorMode', label: 'カラー', group: 'content', options: [
+  { kind: 'enum', key: 'colorMode', label: 'カラー', hint: '点の色の付け方。レインボーは経路に沿って色相が変わる', group: 'content', options: [
     { value: 'single', label: '単色' },
     { value: 'rainbow', label: 'レインボー' },
     { value: 'cycle', label: 'サイクル' },
   ] },
-  { kind: 'color', key: 'color', label: '色', group: 'content' },
-  { kind: 'number', key: 'density', label: '点間隔', group: 'content', min: 0.004, max: 0.1, log: true, digits: 3 },
-  { kind: 'number', key: 'offX', label: '位置 X', group: 'content', min: -1.78, max: 1.78, digits: 3 },
-  { kind: 'number', key: 'offY', label: '位置 Y', group: 'content', min: -1, max: 1, digits: 3 },
-  { kind: 'number', key: 'size', label: 'サイズ', group: 'content', min: 0.05, max: 1.5, digits: 2 },
-  { kind: 'number', key: 'angle', label: '角度', group: 'content', min: 0, max: 360, digits: 0, unit: '°' },
-  { kind: 'number', key: 'rotSpeed', label: '回転', group: 'content', min: -360, max: 360, digits: 0, unit: '°/s' },
-  { kind: 'number', key: 'animSpeed', label: 'アニメ速度', group: 'content', min: 0, max: 4, digits: 2 },
+  { kind: 'color', key: 'color', label: '色', hint: '単色のときのレーザーの色', group: 'content' },
+  { kind: 'number', key: 'density', label: '点間隔', hint: '図形を点に分けるときの間隔。小さいほど点数が増え、フレームレート（pps ÷ 点数）が下がる', group: 'content', min: 0.004, max: 0.1, log: true, digits: 3 },
+  { kind: 'number', key: 'offX', label: '位置 X', hint: '投影位置。中央の正方形の半分を1とする', group: 'content', min: -1.78, max: 1.78, digits: 3 },
+  { kind: 'number', key: 'offY', label: '位置 Y', hint: '投影位置。中央の正方形の半分を1とする', group: 'content', min: -1, max: 1, digits: 3 },
+  { kind: 'number', key: 'size', label: 'サイズ', hint: '投影サイズ。1で中央の正方形いっぱい', group: 'content', min: 0.05, max: 1.5, digits: 2 },
+  { kind: 'number', key: 'angle', label: '角度', hint: '回転角', group: 'content', min: 0, max: 360, digits: 0, unit: '°' },
+  { kind: 'number', key: 'rotSpeed', label: '回転', hint: '1秒あたりの回転量', group: 'content', min: -360, max: 360, digits: 0, unit: '°/s' },
+  { kind: 'number', key: 'animSpeed', label: 'アニメ速度', hint: 'パターンの動きの速さ。0で静止', group: 'content', min: 0, max: 4, digits: 2 },
 
-  { kind: 'enum', key: 'mode', label: '描画方式', group: 'projector', options: [
+  { kind: 'enum', key: 'mode', label: '描画方式', hint: '理想: 図形をそのまま描く。実機: pps とガルバノミラーの応答を再現する', group: 'projector', options: [
     { value: 'clean', label: '理想' },
     { value: 'scan', label: '実機' },
   ] },
-  { kind: 'number', key: 'pps', label: 'pps', group: 'projector', min: 1000, max: 60000, digits: 0 },
-  { kind: 'number', key: 'lag', label: 'ガルバ遅れ', group: 'projector', min: 0, max: 1, digits: 2, unit: 'ms' },
-  { kind: 'number', key: 'beam', label: 'ビーム径', group: 'projector', min: 0.5, max: 10, digits: 1, unit: 'px' },
+  { kind: 'number', key: 'pps', label: 'pps', hint: '1秒あたりに出力する点の数。スキャナの性能はILDAテストパターンを描ける pps で表す', group: 'projector', min: 1000, max: 60000, digits: 0 },
+  { kind: 'number', key: 'lag', label: 'ガルバ遅れ', hint: 'ガルバノミラーの応答の遅れ（時定数）。大きいほど角が丸くなる', group: 'projector', min: 0, max: 1, digits: 2, unit: 'ms' },
+  { kind: 'number', key: 'beam', label: 'ビーム径', hint: 'ビームの太さ。FHD換算のpx', group: 'projector', min: 0.5, max: 10, digits: 1, unit: 'px' },
 
-  { kind: 'enum', key: 'exposureShape', label: '露光方式', group: 'camera', options: [
+  { kind: 'enum', key: 'exposureShape', label: '露光方式', hint: 'シャッター: 露光時間内の光を均等に積算する（カメラ）。残像: 古い光ほど暗くなる（目）', group: 'camera', options: [
     { value: 'box', label: 'シャッター' },
     { value: 'exp', label: '残像' },
   ] },
-  { kind: 'number', key: 'exposure', label: '露光時間', group: 'camera', min: 0.2, max: 200, log: true, digits: 1, unit: 'ms' },
-  { kind: 'number', key: 'glow', label: 'グロー', group: 'camera', min: 0, max: 3, digits: 2 },
-  { kind: 'number', key: 'bright', label: '明るさ', group: 'camera', min: 0.1, max: 5, log: true, digits: 2 },
+  { kind: 'number', key: 'exposure', label: '露光時間', hint: '光を積算する時間。16.7ms（1/60秒）で1コマ分', group: 'camera', min: 0.2, max: 200, log: true, digits: 1, unit: 'ms' },
+  { kind: 'number', key: 'glow', label: 'グロー', hint: 'ビーム周辺のにじみ。ヘイズやレンズでの散乱に相当', group: 'camera', min: 0, max: 3, digits: 2 },
+  { kind: 'number', key: 'bright', label: '明るさ', hint: '露光量。上げると強く当たった部分が白く飛ぶ', group: 'camera', min: 0.1, max: 5, log: true, digits: 2 },
 
-  { kind: 'enum', key: 'output', label: '出力サイズ', group: 'output',
+  { kind: 'enum', key: 'output', label: '出力サイズ', hint: '出力解像度。レーザーの描画範囲は常に中央の正方形', group: 'output',
     options: Object.keys(OUTPUT_SIZES).map(v => ({ value: v, label: v.replace('x', ' × ') })) },
-  { kind: 'bool', key: 'clip', label: '正方形でクリップ', group: 'output' },
+  { kind: 'bool', key: 'clip', label: '正方形でクリップ', hint: '中央の正方形の外を描かない', group: 'output' },
 
-  { kind: 'number', key: 'timeScale', label: 'スロー', group: 'debug', min: 0.0003, max: 1, log: true, digits: 4, unit: '×' },
-  { kind: 'bool', key: 'head', label: '先頭の点', group: 'debug' },
-  { kind: 'bool', key: 'showBlank', label: 'ブランキング表示', group: 'debug' },
+  { kind: 'number', key: 'timeScale', label: 'スロー', hint: '時間の進み方。1で実時間', group: 'debug', min: 0.0003, max: 1, log: true, digits: 4, unit: '×' },
+  { kind: 'bool', key: 'head', label: '先頭の点', hint: '現在のビーム位置を表示する', group: 'debug' },
+  { kind: 'bool', key: 'showBlank', label: 'ブランキング表示', hint: '消灯中の移動経路を灰色で表示する', group: 'debug' },
 ];
 
 export const DEFAULTS: Readonly<Settings> = {

@@ -48,7 +48,7 @@ function presetRow(store: Store) {
 }
 
 function paramRow(p: ParamDef, store: Store): [HTMLElement, Updater] {
-  const label = el('label', {}, p.label);
+  const label = el('label', p.hint ? { title: p.hint } : {}, p.label);
   const set = (v: unknown) => store.set({ [p.key]: v } as Partial<Settings>);
 
   switch (p.kind) {

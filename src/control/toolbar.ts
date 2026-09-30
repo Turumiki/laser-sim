@@ -7,8 +7,8 @@ export function buildToolbar(root: HTMLElement, store: Store, recorder: Recorder
   const play = el('button', { class: 'tb', title: '再生 / 一時停止 (Space)' });
   play.addEventListener('click', () => store.set({ paused: !store.get().paused }));
 
-  const clean = el('button', { class: 'tb', title: '理想的な機材として描く（ちらつきや遅れなし）' }, '理想');
-  const scan = el('button', { class: 'tb', title: 'ppsやミラーの遅れを再現して描く' }, '実機');
+  const clean = el('button', { class: 'tb', title: '図形をそのまま描く' }, '理想');
+  const scan = el('button', { class: 'tb', title: 'pps とガルバノミラーの応答を再現する' }, '実機');
   clean.addEventListener('click', () => store.set({ mode: 'clean' }));
   scan.addEventListener('click', () => store.set({ mode: 'scan' }));
 
@@ -26,9 +26,9 @@ export function buildToolbar(root: HTMLElement, store: Store, recorder: Recorder
     else recorder.start(Number(dur.value), `laser_${store.get().pattern}`);
   });
 
-  const openOut = el('button', { class: 'tb', title: 'OBS用の出力を別ウィンドウで開く' }, '出力を開く');
+  const openOut = el('button', { class: 'tb', title: '出力画面を別ウィンドウで開く' }, '出力を開く');
   openOut.addEventListener('click', () => window.open(outputPath(channel), `laser-output-${channel}`));
-  const copy = el('button', { class: 'tb', title: 'OBSのブラウザソースに貼るURL' }, 'URLをコピー');
+  const copy = el('button', { class: 'tb', title: 'OBSのブラウザソース用のURLをコピーする' }, 'URLをコピー');
   copy.addEventListener('click', async () => {
     const url = await outputUrl(channel);
     try {
