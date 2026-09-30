@@ -39,6 +39,8 @@ const COMMON = `
   uniform sampler2D uCk2;
   uniform sampler2D uCk3;
   uniform float uIntensity;
+  // 色ごとの明るさ（人の目の感度で見るとき）
+  uniform vec3 uGain;
   varying vec2 vUv;
 
   // lod: どのくらいぼかした段を読むか（0 でそのまま）
@@ -108,6 +110,7 @@ export class VolumePass extends Pass {
       uCookieIndex: { value: new Array(MAX).fill(0) },
       uCk0: { value: null }, uCk1: { value: null }, uCk2: { value: null }, uCk3: { value: null },
       uIntensity: { value: 1 },
+      uGain: { value: new Vector3(1, 1, 1) },
     };
 
     this.volumeMat = new ShaderMaterial({
@@ -174,7 +177,7 @@ export class VolumePass extends Pass {
                 * pow(r2 / 16.0, 0.5 * uFlat) / r2 * dt;
             }
           }
-          gl_FragColor = vec4(acc * uIntensity, 1.0);
+          gl_FragColor = vec4(acc * uGain * uIntensity, 1.0);
         }`,
     });
 
@@ -204,7 +207,7 @@ export class VolumePass extends Pass {
             lit += cookie(uCookieIndex[j], uv * 0.5 + 0.5, 0.0) * exp(-uExt * sqrt(r2)) / max(r2, 0.25);
           }
           vec3 base = texture(tDiffuse, vUv).rgb;
-          gl_FragColor = vec4(base + volume() + lit * uIntensity * 6.0, 1.0);
+          gl_FragColor = vec4(base + volume() + lit * uGain * uIntensity * 6.0, 1.0);
         }`,
     });
     // 両方の材質で同じ値を使う
@@ -228,7 +231,7 @@ export class VolumePass extends Pass {
     this.compositeQuad = new FullScreenQuad(this.compositeMat);
   }
 
-  set(projectors: readonly VolumeProjector[], steps: number, maxT: number, intensity: number, flat: number) {
+  set(projectors: readonly VolumeProjector[], steps: number, maxT: number, intensity: number, flat: number, gain: readonly number[]) {
     const u = this.volumeMat.uniforms;
     const cookies: Texture[] = [];
     const list = projectors.slice(0, MAX);
@@ -247,6 +250,7 @@ export class VolumePass extends Pass {
     u.uMaxT.value = maxT;
     u.uIntensity.value = intensity;
     u.uFlat.value = flat;
+    u.uGain.value.set(gain[0], gain[1], gain[2]);
   }
 
   setSize(width: number, height: number) {

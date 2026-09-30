@@ -18,6 +18,8 @@ export interface Rig {
   haze: number;
   // ローリングシャッターの読み出し時間（露光時間を1とする）。0なら全体を同時に撮る
   roll: number;
+  // 人の目の色ごとの感度で見る
+  eye: boolean;
 }
 
 // 1台ぶんの描く材料。チャンネルごとに設定とシミュレーションが違う
@@ -340,7 +342,7 @@ export class Beams {
     this.half = s.scanAngle / 2 * Math.PI / 180;
     this.scale = s.size;
     this.pincushion = s.pincushion;
-    this.gain = s.eye ? EYE_GAIN : [1, 1, 1];
+    this.gain = this.rig.eye ? EYE_GAIN : [1, 1, 1];
     this.cos = Math.cos(p.yaw);
     this.sin = Math.sin(p.yaw);
     this.sheets.origin = this.rays.origin = this.wall.origin = p.pos;

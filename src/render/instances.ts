@@ -1,7 +1,7 @@
 import type { Frame } from '../core/frame';
 import type { Scanner } from '../core/scanner';
 import type { Settings } from '../core/params';
-import { EYE_GAIN, pincushion } from '../core/color';
+import { pincushion } from '../core/color';
 
 // 1本の線分 = x0 y0 x1 y1 / エネルギー r g b / グローの有無
 export const STRIDE = 9;
@@ -56,8 +56,6 @@ function mapper(s: Readonly<Settings>, v: View) {
   };
 }
 
-const ONE: readonly [number, number, number] = [1, 1, 1];
-
 // スキャン再現：露光時間内に通った軌跡を、通った時間に比例したエネルギーで積む。
 // 遅く動いた所ほど明るく、図形が長いほど暗くなる（実機と同じ）
 export function scanInstances(out: Instances, sc: Scanner, s: Readonly<Settings>, v: View, tau: number) {
@@ -65,7 +63,6 @@ export function scanInstances(out: Instances, sc: Scanner, s: Readonly<Settings>
   const window = isExp ? tau * 5 : tau;
   const dt = 1 / s.pps;
   const map = mapper(s, v);
-  const [gr, gg, gb] = s.eye ? EYE_GAIN : ONE;
 
   let L = 0;
   while (L < sc.count && sc.scanT - sc.t[sc.index(L)] <= window) L++;
@@ -82,7 +79,7 @@ export function scanInstances(out: Instances, sc: Scanner, s: Readonly<Settings>
       const age = sc.scanT - sc.t[i];
       const w = isExp ? Math.exp(-age / tau) : 1;
       const e = w * dt / tau * v.lref;
-      out.push(xj, yj, xi, yi, e, sc.r[i] / 255 * gr, sc.g[i] / 255 * gg, sc.b[i] / 255 * gb, 1);
+      out.push(xj, yj, xi, yi, e, sc.r[i] / 255, sc.g[i] / 255, sc.b[i] / 255, 1);
     } else if (s.showBlank) {
       out.push(xj, yj, xi, yi, 0.25 * Math.hypot(xi - xj, yi - yj), 0.6, 0.6, 0.6, 0);
     }
@@ -94,7 +91,7 @@ export function scanInstances(out: Instances, sc: Scanner, s: Readonly<Settings>
     const i = sc.index(0);
     if (sc.on[i]) {
       p = map(sc.x[i], sc.y[i]);
-      out.push(p.x, p.y, p.x, p.y, 4 * SQRT_2PI * v.sigma, sc.r[i] / 255 * gr, sc.g[i] / 255 * gg, sc.b[i] / 255 * gb, 1);
+      out.push(p.x, p.y, p.x, p.y, 4 * SQRT_2PI * v.sigma, sc.r[i] / 255, sc.g[i] / 255, sc.b[i] / 255, 1);
     }
   }
 }
@@ -102,7 +99,6 @@ export function scanInstances(out: Instances, sc: Scanner, s: Readonly<Settings>
 // ベクター表示：今のフレームの図形をそのまま均一な明るさで描く
 export function frameInstances(out: Instances, f: Frame, s: Readonly<Settings>, v: View) {
   const map = mapper(s, v);
-  const [gr, gg, gb] = s.eye ? EYE_GAIN : ONE;
   const dot = SQRT_2PI * v.sigma;
   let prevLit = false;
   let p = map(f.x[0], f.y[0]);
@@ -110,7 +106,7 @@ export function frameInstances(out: Instances, f: Frame, s: Readonly<Settings>, 
   for (let i = 1; i < f.length; i++) {
     p = map(f.x[i], f.y[i]);
     const x1 = p.x, y1 = p.y;
-    const r = f.r[i] / 255 * gr, g = f.g[i] / 255 * gg, b = f.b[i] / 255 * gb;
+    const r = f.r[i] / 255, g = f.g[i] / 255, b = f.b[i] / 255;
     if (!f.on[i]) {
       prevLit = false;
     } else if (Math.hypot(x1 - x0, y1 - y0) > 1e-3) {

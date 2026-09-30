@@ -16,6 +16,7 @@ import { connectSync } from '../sync/client';
 import { fastTooltips } from '../control/tooltip';
 import { Cookies } from './cookies';
 import { VolumePass, type VolumeProjector } from './volume';
+import { EYE_GAIN } from '../core/color';
 import { Beams, type Projector, type Rig, type Source } from './beams';
 import { ROOMS, Surfaces, TARGETS, type TargetKind } from './surfaces';
 
@@ -116,6 +117,8 @@ interface ViewerSettings {
   extinction: number;
   // 映像の描き方で、遠くの減衰を弱める量
   flat: number;
+  // 人の目の色ごとの感度で見る（緑は明るく、赤・青は暗く見える）
+  eye: boolean;
   // ローリングシャッター（撮っているカメラが、画面を上の行から順に時間をずらして撮る）
   rolling: boolean;
   // 上から下まで読み出すのにかかる時間（ms）
@@ -131,7 +134,7 @@ const RIG_KEY = 'laser:viewer';
 const vs: ViewerSettings = {
   // スマホのGPUは非力なので、初めて開いたときは軽い画質にする
   channels: [channel],
-  quality: matchMedia('(pointer: coarse)').matches ? 'low' : 'mid', haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, extinction: 0.3, flat: 0, rolling: false, readout: 16, target: 'wall', count: 1, spacing: 2, layout: 'parallel', view: 'audience', render: 'vector',
+  quality: matchMedia('(pointer: coarse)').matches ? 'low' : 'mid', haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, extinction: 0.3, flat: 0, eye: false, rolling: false, readout: 16, target: 'wall', count: 1, spacing: 2, layout: 'parallel', view: 'audience', render: 'vector',
   ...loadLocal<ViewerSettings>(RIG_KEY),
 };
 if (!VIEWS.some(v => v.id === vs.view)) vs.view = 'audience';
@@ -156,10 +159,11 @@ if (params.has('ch')) vs.channels = [channel];
 // 以前はカンマ区切りの文字で持っていた
 if (typeof vs.channels === 'string') vs.channels = (vs.channels as string).split(',').map(t => t.trim());
 useChannels();
-const rig: Rig = { distance: 0, haze: 0, roll: 0 };
+const rig: Rig = { distance: 0, haze: 0, roll: 0, eye: false };
 const applyRig = () => {
   rig.distance = vs.distance;
   rig.haze = vs.haze;
+  rig.eye = vs.eye;
 };
 applyRig();
 
@@ -408,7 +412,7 @@ startLoop(dt => {
       return { ...p, halfTan: Math.tan(f.store.get().scanAngle / 2 * Math.PI / 180), cookie: cookies.get(f.store, f.sim) };
     });
     cookies.update(new Set(feedOrder.map(f => f.sim)));
-    volume.set(list, STEPS[vs.quality] ?? 48, vs.distance * 1.5, vs.haze * VIDEO_GAIN, vs.flat);
+    volume.set(list, STEPS[vs.quality] ?? 48, vs.distance * 1.5, vs.haze * VIDEO_GAIN, vs.flat, vs.eye ? EYE_GAIN : [1, 1, 1]);
   } else {
     cookies.update(new Set());
     beams.draw(feedOrder.map(f => sources.get(f)!));
@@ -420,9 +424,18 @@ startLoop(dt => {
 });
 
 
+function checkRow(key: 'eye' | 'rolling', label: string, title: string, then?: () => void) {
+  const row = document.createElement('label');
+  const box = Object.assign(document.createElement('input'), { type: 'checkbox', checked: vs[key] });
+  box.addEventListener('change', () => { vs[key] = box.checked; then?.(); saveLocal(RIG_KEY, vs); });
+  row.title = title;
+  row.append(label, box);
+  return row;
+}
+
 function buildRigPanel() {
   const panel = document.getElementById('rig')!;
-  const rows: [Exclude<keyof ViewerSettings, 'target' | 'quality' | 'layout' | 'view' | 'channels' | 'render' | 'rolling'>, string, number, number, number][] = [
+  const rows: [Exclude<keyof ViewerSettings, 'target' | 'quality' | 'layout' | 'view' | 'channels' | 'render' | 'rolling' | 'eye'>, string, number, number, number][] = [
     ['count', '台数', 1, 8, 1],
     ['spacing', '間隔', 0.5, 10, 0.5],
     ['haze', 'ヘイズ', 0.1, 5, 0.05],
@@ -511,14 +524,10 @@ function buildRigPanel() {
   viewRow.append('視点', viewSel, back);
   panel.append(viewRow);
   for (const [key, label, min, max, step] of rows) {
+    // 見る側（目・カメラ）の性質はオン/オフで、読み出し時間の手前に並べる
     if (key === 'readout') {
-      // 撮っているカメラの性質。スキャンのチャンネルを「点のデータから直接」で描いているときだけ効く
-      const rollRow = document.createElement('label');
-      const box = Object.assign(document.createElement('input'), { type: 'checkbox', checked: vs.rolling });
-      box.addEventListener('change', () => { vs.rolling = box.checked; saveLocal(RIG_KEY, vs); });
-      rollRow.title = 'スマホや一般的なビデオカメラで撮ったときの写り方。画面を上の行から順に時間をずらして撮るので、速く動くレーザーは曲がったり縞になったりして写る。スキャンのチャンネルを「点のデータから直接」で描いているときだけ効く';
-      rollRow.append('ローリング', box);
-      panel.append(rollRow);
+      panel.append(checkRow('eye', '目の感度', '人の目の色ごとの感度で見る。目は緑に敏感で、同じ出力でも赤や青は暗く見える（一般的なRGB機: 赤638nm・緑520nm・青450nm）', applyRig));
+      panel.append(checkRow('rolling', 'ローリング', 'スマホや一般的なビデオカメラで撮ったときの写り方。画面を上の行から順に時間をずらして撮るので、速く動くレーザーは曲がったり縞になったりして写る。スキャンのチャンネルを「点のデータから直接」で描いているときだけ効く'));
     }
     const row = document.createElement('label');
     const input = Object.assign(document.createElement('input'), { type: 'range', min, max, step, value: vs[key] });
