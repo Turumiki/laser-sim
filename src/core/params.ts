@@ -101,9 +101,9 @@ export const PARAMS: readonly ParamDef[] = [
   { kind: 'number', key: 'rotSpeed', label: '回転', hint: '1秒あたりの回転量', group: 'content', min: -360, max: 360, digits: 0, unit: '°/s' },
   { kind: 'number', key: 'animSpeed', label: 'アニメ速度', hint: 'パターンの動きの速さ。0で静止', group: 'content', min: 0, max: 4, digits: 2 },
 
-  { kind: 'enum', key: 'mode', label: '描画方式', hint: '理想: 図形をそのまま描く。実機: pps とガルバノミラーの応答を再現する', group: 'projector', options: [
-    { value: 'clean', label: '理想' },
-    { value: 'scan', label: '実機' },
+  { kind: 'enum', key: 'mode', label: '描画方式', hint: 'ベクター: ILDAデータの図形をそのまま描く。スキャン: pps、スキャナ性能、減衰、カラーシフトを反映して実機の見え方を再現する', group: 'projector', options: [
+    { value: 'clean', label: 'ベクター' },
+    { value: 'scan', label: 'スキャン' },
   ] },
   { kind: 'number', key: 'pps', label: 'pps', hint: '1秒あたりに出力する点の数。スキャナの性能はILDAテストパターンを描ける pps で表す', group: 'projector', min: 1000, max: 60000, digits: 0 },
   { kind: 'number', key: 'scannerK', label: 'スキャナ性能', hint: 'ILDAテストパターンを正しく描ける pps（走査角8°）。低いほど角が丸くなり、円が小さくなる', group: 'projector', min: 5, max: 80, digits: 0, unit: 'kpps' },

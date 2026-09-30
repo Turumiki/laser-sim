@@ -11,8 +11,8 @@ export function buildToolbar(root: HTMLElement, store: Store, recorder: Recorder
   const play = el('button', { class: 'tb', title: '再生 / 一時停止 (Space)' });
   play.addEventListener('click', () => store.set({ paused: !store.get().paused }));
 
-  const clean = el('button', { class: 'tb', title: '図形をそのまま描く' }, '理想');
-  const scan = el('button', { class: 'tb', title: 'pps とガルバノミラーの応答を再現する' }, '実機');
+  const clean = el('button', { class: 'tb', title: 'ILDAデータの図形をそのまま描く。スキャナの特性は反映しない' }, 'ベクター');
+  const scan = el('button', { class: 'tb', title: 'pps、スキャナ性能、減衰、カラーシフトを反映して、実機が描いたときの見え方を再現する' }, 'スキャン');
   clean.addEventListener('click', () => store.set({ mode: 'clean' }));
   scan.addEventListener('click', () => store.set({ mode: 'scan' }));
 
