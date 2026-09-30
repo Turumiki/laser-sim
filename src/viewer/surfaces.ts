@@ -28,7 +28,6 @@ const DEFAULT_FLOOR = 2.2;
 const material = new MeshBasicMaterial({ color: 0x161616 });
 
 // ビームが当たる物。プロジェクターは原点で -z 方向を向いている。
-// レイは v = (tx, ty, -1) と置き、当たった点を v * t で表す（t はそのまま奥行きになる）。
 // 毎フレーム数千本を調べるので、汎用の当たり判定ではなく形ごとに式で解く
 export class Surfaces {
   readonly group = new Group();
@@ -108,76 +107,88 @@ export class Surfaces {
     return this.d * 0.6;
   }
 
-  // 何にも当たらなければ Infinity
-  hit(tx: number, ty: number): number {
+  // 点 o から方向 d へ飛ぶ光が最初に当たる所。o + d * t の t を返す（何にも当たらなければ Infinity）
+  hit(o: readonly number[], d: readonly number[]): number {
     if (this.kind === 'none') return Infinity;
-    let t = this.d;
-    if (ty < 0) t = Math.min(t, this.floor / -ty);
+    const [ox, oy, oz] = o, [dx, dy, dz] = d;
+    const plane = (p: number, v: number, target: number) => {
+      if (Math.abs(v) < 1e-9) return Infinity;
+      const t = (target - p) / v;
+      return t > 1e-6 ? t : Infinity;
+    };
+    let t = plane(oz, dz, -this.d);
+    t = Math.min(t, plane(oy, dy, -this.floor));
     if (this.room) {
       const { width, height } = this.room;
-      if (ty > 0) t = Math.min(t, (height - this.floor) / ty);
-      if (tx !== 0) t = Math.min(t, width / 2 / Math.abs(tx));
+      t = Math.min(t, plane(oy, dy, height - this.floor), plane(ox, dx, -width / 2), plane(ox, dx, width / 2));
     }
     switch (this.kind) {
       case 'corner':
-        if (tx < 0) t = Math.min(t, this.sideX() / -tx);
+        t = Math.min(t, plane(ox, dx, -this.sideX()));
         break;
       case 'sphere':
-        t = Math.min(t, this.sphere(tx, ty));
+        t = Math.min(t, this.sphere(o, d));
         break;
       case 'cube':
-        t = Math.min(t, this.cube(tx, ty));
+        t = Math.min(t, this.cube(o, d));
         break;
       case 'cylinder':
-        t = Math.min(t, this.cylinder(tx, ty));
+        t = Math.min(t, this.cylinder(o, d));
         break;
     }
     return t;
   }
 
-  private sphere(tx: number, ty: number) {
-    const S = this.center, R = this.size;
-    const a = tx * tx + ty * ty + 1, b = -2 * S, c = S * S - R * R;
+  private sphere(o: readonly number[], d: readonly number[]) {
+    const R = this.size;
+    const cx = o[0], cy = o[1], cz = o[2] + this.center;
+    const a = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+    const b = 2 * (cx * d[0] + cy * d[1] + cz * d[2]);
+    const c = cx * cx + cy * cy + cz * cz - R * R;
     const disc = b * b - 4 * a * c;
     if (disc < 0) return Infinity;
     const t = (-b - Math.sqrt(disc)) / (2 * a);
-    return t > 0 ? t : Infinity;
+    return t > 1e-6 ? t : Infinity;
   }
 
-  private cube(tx: number, ty: number) {
+  private cube(o: readonly number[], d: readonly number[]) {
     // 立方体の向きに直してから、軸に沿った箱として解く（スラブ法）
-    const o = this.o.set(0, 0, 0).applyMatrix4(this.toCube);
-    const v = this.v.set(tx, ty, -1).transformDirection(this.toCube).multiplyScalar(Math.hypot(tx, ty, 1));
+    const lo = this.o.set(o[0], o[1], o[2]).applyMatrix4(this.toCube);
+    const len = Math.hypot(d[0], d[1], d[2]);
+    const v = this.v.set(d[0], d[1], d[2]).transformDirection(this.toCube).multiplyScalar(len);
     const h = this.size * 0.8;
     let near = -Infinity, far = Infinity;
     for (const k of ['x', 'y', 'z'] as const) {
       if (Math.abs(v[k]) < 1e-9) {
-        if (Math.abs(o[k]) > h) return Infinity;
+        if (Math.abs(lo[k]) > h) return Infinity;
         continue;
       }
-      let t1 = (-h - o[k]) / v[k], t2 = (h - o[k]) / v[k];
+      let t1 = (-h - lo[k]) / v[k], t2 = (h - lo[k]) / v[k];
       if (t1 > t2) [t1, t2] = [t2, t1];
       near = Math.max(near, t1);
       far = Math.min(far, t2);
     }
-    return near <= far && near > 0 ? near : Infinity;
+    return near <= far && near > 1e-6 ? near : Infinity;
   }
 
-  private cylinder(tx: number, ty: number) {
-    const S = this.center, R = this.size, half = this.size * 1.5;
+  private cylinder(o: readonly number[], d: readonly number[]) {
+    const R = this.size, half = this.size * 1.5;
+    const px = o[0], pz = o[2] + this.center;
     let best = Infinity;
     // 側面（縦向きの円柱。xz平面で円と交わるか）
-    const a = tx * tx + 1, b = -2 * S, c = S * S - R * R;
+    const a = d[0] * d[0] + d[2] * d[2];
+    const b = 2 * (px * d[0] + pz * d[2]);
+    const c = px * px + pz * pz - R * R;
     const disc = b * b - 4 * a * c;
-    if (disc >= 0) {
+    if (a > 1e-12 && disc >= 0) {
       const t = (-b - Math.sqrt(disc)) / (2 * a);
-      if (t > 0 && Math.abs(ty * t) <= half) best = t;
+      if (t > 1e-6 && Math.abs(o[1] + d[1] * t) <= half) best = t;
     }
     // 上下のふた
-    if (Math.abs(ty) > 1e-9) {
+    if (Math.abs(d[1]) > 1e-9) {
       for (const y of [half, -half]) {
-        const t = y / ty;
-        if (t > 0 && t < best && (tx * t) ** 2 + (S - t) ** 2 <= R * R) best = t;
+        const t = (y - o[1]) / d[1];
+        if (t > 1e-6 && t < best && (px + d[0] * t) ** 2 + (pz + d[2] * t) ** 2 <= R * R) best = t;
       }
     }
     return best;

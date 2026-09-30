@@ -16,24 +16,40 @@ export interface Rig {
   haze: number;
 }
 
+// プロジェクター1台の置き場所と向き。全台が同じ映像ソースを出す
+export interface Projector {
+  pos: readonly [number, number, number];
+  // 左右の向き（rad）。正で左を向く
+  yaw: number;
+  // 左右反転（左右対称に並べるときの右側）
+  mirror: boolean;
+}
+
 
 class Buffer {
   pos: Float32Array;
   col: Float32Array;
+  org: Float32Array;
   count = 0;
+  // これから打つ頂点の光源（プロジェクター）の位置
+  origin: readonly number[] = [0, 0, 0];
   readonly geo = new BufferGeometry();
   private posAttr: BufferAttribute;
   private colAttr: BufferAttribute;
+  private orgAttr: BufferAttribute;
   private per: number;
 
   constructor(max: number, vertsPer: number) {
     this.per = vertsPer;
     this.pos = new Float32Array(max * vertsPer * 3);
     this.col = new Float32Array(max * vertsPer * 3);
+    this.org = new Float32Array(max * vertsPer * 3);
     this.posAttr = new BufferAttribute(this.pos, 3);
     this.colAttr = new BufferAttribute(this.col, 3);
+    this.orgAttr = new BufferAttribute(this.org, 3);
     this.geo.setAttribute('position', this.posAttr);
     this.geo.setAttribute('color', this.colAttr);
+    this.geo.setAttribute('aOrigin', this.orgAttr);
   }
 
   full() {
@@ -44,13 +60,14 @@ class Buffer {
     const o = (this.count * this.per + k) * 3;
     this.pos[o] = x; this.pos[o + 1] = y; this.pos[o + 2] = z;
     this.col[o] = r; this.col[o + 1] = g; this.col[o + 2] = b;
+    this.org[o] = this.origin[0]; this.org[o + 1] = this.origin[1]; this.org[o + 2] = this.origin[2];
   }
 
   // 使った分だけGPUに送る（バッファ全体を毎フレーム送ると重い）
   commit() {
     const n = this.count * this.per;
     this.geo.setDrawRange(0, n);
-    for (const attr of [this.posAttr, this.colAttr]) {
+    for (const attr of [this.posAttr, this.colAttr, this.orgAttr]) {
       attr.clearUpdateRanges();
       attr.addUpdateRange(0, n * 3);
       attr.needsUpdate = true;
@@ -72,6 +89,7 @@ const SMOKE_GLSL = `
   // ビームの見え方の物理:
   // ・ヘイズで散乱した分だけビームは減っていく（ベール・ランベルト則）
   // ・ヘイズの粒は光を前向きに散乱しやすいので、光源の方を向いて見るほど明るい（ヘニエイ・グリーンスタイン）
+  // w: 光源から見た位置
   float airlight(vec3 w, vec3 viewDir) {
     float r = length(w);
     vec3 beamDir = w / max(r, 1e-4);
@@ -114,8 +132,9 @@ const SMOKE_GLSL = `
     return smoothstep(0.38, 0.72, d);
   }
   // 光の膜には厚みがある（遠いほどビームが広がって厚い）。視線に沿って厚みの中を数か所測って平均する
-  float smoke(vec3 w, vec3 viewDir) {
-    float thick = 0.03 + 0.05 * length(w);
+  // w: 空間での位置、r: 光源からの距離
+  float smoke(vec3 w, vec3 viewDir, float r) {
+    float thick = 0.03 + 0.05 * r;
     float d = uThick > 0.5
       ? (smoke1(w - viewDir * thick) + smoke1(w) + smoke1(w + viewDir * thick)) / 3.0
       : smoke1(w);
@@ -133,13 +152,16 @@ export interface HazeUniforms {
 }
 
 const beamVertex = `
+  attribute vec3 aOrigin;
   varying vec3 vColor;
   varying vec3 vView;
   varying vec3 vWorld;
+  varying vec3 vRel;
   varying vec3 vEye;
   void main() {
     vColor = color;
     vWorld = (modelMatrix * vec4(position, 1.0)).xyz;
+    vRel = vWorld - aOrigin;
     vEye = vWorld - cameraPosition;
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     vView = mv.xyz;
@@ -156,12 +178,14 @@ const sheetMaterial = (uniforms: HazeUniforms) => new ShaderMaterial({
     varying vec3 vColor;
     varying vec3 vView;
     varying vec3 vWorld;
+    varying vec3 vRel;
     varying vec3 vEye;
     void main() {
       vec3 n = normalize(cross(dFdx(vView), dFdy(vView)));
       float c = abs(dot(n, normalize(-vView)));
       vec3 viewDir = normalize(vEye);
-      gl_FragColor = vec4(vColor / max(c, 0.12) * smoke(vWorld, viewDir) * airlight(vWorld, viewDir) * spread(vWorld), 1.0);
+      float s = smoke(vWorld, viewDir, length(vRel));
+      gl_FragColor = vec4(vColor / max(c, 0.12) * s * airlight(vRel, viewDir) * spread(vRel), 1.0);
     }`,
 });
 
@@ -172,19 +196,25 @@ const rayMaterial = (uniforms: HazeUniforms) => new ShaderMaterial({
   fragmentShader: SMOKE_GLSL + `
     varying vec3 vColor;
     varying vec3 vWorld;
+    varying vec3 vRel;
     varying vec3 vEye;
     void main() {
       vec3 viewDir = normalize(vEye);
-      gl_FragColor = vec4(vColor * smoke(vWorld, viewDir) * airlight(vWorld, viewDir), 1.0);
+      gl_FragColor = vec4(vColor * smoke(vWorld, viewDir, length(vRel)) * airlight(vRel, viewDir), 1.0);
     }`,
 });
 
 // ビームを3Dにしたもの。隣り合う2点の間は光の膜（三角形）、その場に留まる点は1本のビーム（線）にする
 export class Beams {
   readonly group = new Group();
-  private sheets = new Buffer(40000, 3);
-  private rays = new Buffer(20000, 2);
-  private wall = new Buffer(40000, 2);
+  private sheets = new Buffer(160000, 3);
+  private rays = new Buffer(60000, 2);
+  private wall = new Buffer(160000, 2);
+  private projectors: readonly Projector[] = [{ pos: [0, 0, 0], yaw: 0, mirror: false }];
+  private proj: Projector = this.projectors[0];
+  private cos = 1;
+  private sin = 0;
+  private dir = [0, 0, 0];
   private rig: Rig;
   // 点の座標はサイズを掛ける前の値なので、ここで掛ける
   private scale = 1;
@@ -206,14 +236,30 @@ export class Beams {
   // 点の座標 → ビームが当たる位置。戻り値は奥行き（何にも当たらなければ Infinity）
   private hit(x: number, y: number, out: number[]) {
     const a = this.rig.halfAngle * this.scale;
-    const tx = Math.tan(x * a), ty = Math.tan(y * a);
-    const t = this.surfaces.hit(tx, ty);
+    const tx = Math.tan(x * a) * (this.proj.mirror ? -1 : 1), ty = Math.tan(y * a);
+    // プロジェクターの向き（y軸まわりの回転）に合わせる。正面は -z
+    const d = this.dir, o = this.proj.pos;
+    d[0] = tx * this.cos - this.sin;
+    d[1] = ty;
+    d[2] = -tx * this.sin - this.cos;
+    const t = this.surfaces.hit(o, d);
     // 当たらないビームは一定の長さで止め、先へ行くほど消えていく
     const reach = Number.isFinite(t) ? t : this.rig.distance * 1.2;
-    out[0] = tx * reach;
-    out[1] = ty * reach;
-    out[2] = -reach;
+    out[0] = o[0] + d[0] * reach;
+    out[1] = o[1] + d[1] * reach;
+    out[2] = o[2] + d[2] * reach;
     return t;
+  }
+
+  private use(p: Projector) {
+    this.proj = p;
+    this.cos = Math.cos(p.yaw);
+    this.sin = Math.sin(p.yaw);
+    this.sheets.origin = this.rays.origin = this.wall.origin = p.pos;
+  }
+
+  setProjectors(list: readonly Projector[]) {
+    this.projectors = list.length ? list : this.projectors;
   }
 
   // 2本のビームが別々の物に当たっている（奥行きが飛んでいる）か
@@ -231,7 +277,8 @@ export class Beams {
     // 物の縁をまたぐ膜は、手前の物を突き抜けた形になってしまうので描かない
     if (this.split(ta, tb)) return;
     const s = this.sheets;
-    s.vert(0, 0, 0, 0, r * k, g * k, b * k);
+    const o = this.proj.pos;
+    s.vert(0, o[0], o[1], o[2], r * k, g * k, b * k);
     s.vert(1, this.a[0], this.a[1], this.a[2], r * k, g * k, b * k);
     s.vert(2, this.b[0], this.b[1], this.b[2], r * k, g * k, b * k);
     s.count++;
@@ -240,8 +287,8 @@ export class Beams {
   private ray(x: number, y: number, r: number, g: number, b: number, k: number) {
     if (this.rays.full()) return;
     this.hit(x, y, this.a);
-    const s = this.rays;
-    s.vert(0, 0, 0, 0, r * k, g * k, b * k);
+    const s = this.rays, o = this.proj.pos;
+    s.vert(0, o[0], o[1], o[2], r * k, g * k, b * k);
     s.vert(1, this.a[0], this.a[1], this.a[2], r * k, g * k, b * k);
     s.count++;
   }
@@ -252,10 +299,11 @@ export class Beams {
     const ta = this.hit(x0, y0, this.a), tb = this.hit(x1, y1, this.b);
     if (!Number.isFinite(ta) || !Number.isFinite(tb) || this.split(ta, tb)) return;
     // 面から少しだけ手前に出して、面と重ならないようにする
-    const s = this.wall, pull = 0.998;
+    const s = this.wall, o = this.proj.pos, pull = 0.998;
     k *= Math.exp(-this.haze.uExt.value * (ta + tb) / 2);
-    s.vert(0, this.a[0] * pull, this.a[1] * pull, this.a[2] * pull, r * k, g * k, b * k);
-    s.vert(1, this.b[0] * pull, this.b[1] * pull, this.b[2] * pull, r * k, g * k, b * k);
+    const P = (p: number[], i: number) => o[i] + (p[i] - o[i]) * pull;
+    s.vert(0, P(this.a, 0), P(this.a, 1), P(this.a, 2), r * k, g * k, b * k);
+    s.vert(1, P(this.b, 0), P(this.b, 1), P(this.b, 2), r * k, g * k, b * k);
     s.count++;
   }
 
@@ -273,6 +321,14 @@ export class Beams {
   // スキャン: 露光時間内に通った軌跡。遅く動いた所ほど明るい（2D出力と同じ考え方）
   fromScanner(sc: Scanner, s: Readonly<Settings>, tau: number) {
     this.begin(s);
+    for (const p of this.projectors) {
+      this.use(p);
+      this.scanOne(sc, s, tau);
+    }
+    this.end();
+  }
+
+  private scanOne(sc: Scanner, s: Readonly<Settings>, tau: number) {
     const isExp = s.exposureShape === 'exp';
     const window = isExp ? tau * 5 : tau;
     const dt = 1 / s.pps;
@@ -292,12 +348,19 @@ export class Beams {
       else this.sheet(sc.x[j], sc.y[j], sc.x[i], sc.y[i], r, g, b, e / d * haze * 0.12);
       this.spot(sc.x[j], sc.y[j], sc.x[i], sc.y[i], r, g, b, 0.8);
     }
-    this.end();
   }
 
   // ベクター: 今のフレームの図形をそのまま、均一な明るさで
   fromFrame(f: Frame, s: Readonly<Settings>) {
     this.begin(s);
+    for (const p of this.projectors) {
+      this.use(p);
+      this.frameOne(f, s);
+    }
+    this.end();
+  }
+
+  private frameOne(f: Frame, s: Readonly<Settings>) {
     const haze = this.rig.haze * s.bright;
     let total = 0;
     for (let i = 1; i < f.length; i++) {
@@ -318,6 +381,5 @@ export class Beams {
         prevLit = true;
       }
     }
-    this.end();
   }
 }

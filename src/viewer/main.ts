@@ -1,5 +1,5 @@
 import {
-  ACESFilmicToneMapping, BoxGeometry, Color, GridHelper, HalfFloatType, Mesh, MeshBasicMaterial, PerspectiveCamera,
+  ACESFilmicToneMapping, BoxGeometry, Color, GridHelper, Group, HalfFloatType, Mesh, MeshBasicMaterial, PerspectiveCamera,
   Scene, Vector2, WebGLRenderer, WebGLRenderTarget,
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -13,7 +13,7 @@ import { Store } from '../core/store';
 import { startLoop } from '../engine/loop';
 import { Simulation } from '../engine/simulation';
 import { connectSync } from '../sync/client';
-import { Beams, type Rig } from './beams';
+import { Beams, type Projector, type Rig } from './beams';
 import { ROOMS, Surfaces, TARGETS, type TargetKind } from './surfaces';
 
 // レーザーが空間にどう出るかを3Dで見る（隠し機能）。設定は操作画面と同期する
@@ -32,6 +32,29 @@ const QUALITY: Record<Quality, { label: string; pixelRatio: () => number; sample
   low: { label: 'Low', pixelRatio: () => 0.5, samples: 0, thick: 0 },
 };
 
+// 複数台の並べ方。実際の現場でよくある置き方
+type Layout = 'parallel' | 'fan' | 'mirror';
+const LAYOUTS: { id: Layout; label: string }[] = [
+  { id: 'parallel', label: '平行' },
+  { id: 'fan', label: '扇' },
+  { id: 'mirror', label: '左右対称' },
+];
+
+// ステージの前に横一列で並べる。扇は外側ほど外を向け、左右対称は右半分を左右反転する
+function layout(count: number, spacing: number, mode: Layout): Projector[] {
+  const list: Projector[] = [];
+  const mid = (count - 1) / 2;
+  for (let i = 0; i < count; i++) {
+    const k = mid ? (i - mid) / mid : 0;
+    list.push({
+      pos: [(i - mid) * spacing, 0, 0],
+      yaw: mode === 'fan' ? -k * 20 * Math.PI / 180 : 0,
+      mirror: mode === 'mirror' && i > mid,
+    });
+  }
+  return list;
+}
+
 interface ViewerSettings {
   quality: Quality;
   angle: number;
@@ -42,10 +65,13 @@ interface ViewerSettings {
   grain: number;
   extinction: number;
   target: TargetKind;
+  count: number;
+  spacing: number;
+  layout: Layout;
 }
 const RIG_KEY = 'laser:viewer';
 const vs: ViewerSettings = {
-  quality: 'mid', angle: 40, haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, extinction: 0.3, target: 'wall',
+  quality: 'mid', angle: 40, haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, extinction: 0.3, target: 'wall', count: 1, spacing: 2, layout: 'parallel',
   ...loadLocal<ViewerSettings>(RIG_KEY),
 };
 const rig: Rig = { halfAngle: 0, distance: 0, haze: 0 };
@@ -71,9 +97,9 @@ controls.target.set(0, 0, -vs.distance / 2);
 controls.enableDamping = true;
 
 // プロジェクター本体、床、壁
-const body = new Mesh(new BoxGeometry(0.4, 0.2, 0.5), new MeshBasicMaterial({ color: 0x1c1c1c }));
-body.position.z = 0.26;
-scene.add(body);
+const bodies = new Group();
+scene.add(bodies);
+const bodyGeo = new BoxGeometry(0.4, 0.2, 0.5), bodyMat = new MeshBasicMaterial({ color: 0x1c1c1c });
 let grid: GridHelper | null = null;
 // 床の目盛りは1m間隔。壁までの距離に合わせて広げる
 const placeGrid = () => {
@@ -92,6 +118,19 @@ const placeWall = () => {
 placeWall();
 
 const beams = new Beams(rig, surfaces);
+const placeProjectors = () => {
+  const list = layout(vs.count, vs.spacing, vs.layout);
+  beams.setProjectors(list);
+  bodies.clear();
+  for (const p of list) {
+    const m = new Mesh(bodyGeo, bodyMat);
+    m.position.set(p.pos[0], p.pos[1], p.pos[2]);
+    m.rotation.y = p.yaw;
+    m.translateZ(0.26);
+    bodies.add(m);
+  }
+};
+placeProjectors();
 const applySmoke = () => {
   beams.haze.uSmoke.value = vs.smoke;
   beams.haze.uGrain.value = vs.grain;
@@ -143,7 +182,9 @@ startLoop(dt => {
 
 function buildRigPanel() {
   const panel = document.getElementById('rig')!;
-  const rows: [Exclude<keyof ViewerSettings, 'target' | 'quality'>, string, number, number, number][] = [
+  const rows: [Exclude<keyof ViewerSettings, 'target' | 'quality' | 'layout'>, string, number, number, number][] = [
+    ['count', '台数', 1, 8, 1],
+    ['spacing', '間隔', 0.5, 10, 0.5],
     ['angle', '走査角', 10, 80, 1],
     ['haze', 'ヘイズ', 0.1, 5, 0.05],
     ['distance', '壁までの距離', 2, 150, 0.5],
@@ -165,6 +206,19 @@ function buildRigPanel() {
   qualityRow.title = 'High: 高解像度とアンチエイリアス。Low: 半分の解像度で軽くする';
   qualityRow.append('画質', quality);
   panel.append(qualityRow);
+
+  const layoutRow = document.createElement('label');
+  const layoutSel = document.createElement('select');
+  for (const l of LAYOUTS) layoutSel.add(new Option(l.label, l.id));
+  layoutSel.value = vs.layout;
+  layoutSel.addEventListener('change', () => {
+    vs.layout = layoutSel.value as Layout;
+    placeProjectors();
+    saveLocal(RIG_KEY, vs);
+  });
+  layoutRow.title = '複数台の並べ方。扇: 外側ほど外へ向ける / 左右対称: 右半分を左右反転';
+  layoutRow.append('並べ方', layoutSel);
+  panel.append(layoutRow);
   const targetRow = document.createElement('label');
   const select = document.createElement('select');
   for (const t of TARGETS) select.add(new Option(t.label, t.id));
@@ -195,6 +249,7 @@ function buildRigPanel() {
       placeWall();
       bloom.strength = vs.bloom;
       applySmoke();
+      placeProjectors();
       saveLocal(RIG_KEY, vs);
       show();
     });
