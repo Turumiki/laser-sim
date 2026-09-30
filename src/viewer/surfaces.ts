@@ -2,7 +2,7 @@ import {
   BoxGeometry, CylinderGeometry, Group, Matrix4, Mesh, MeshBasicMaterial, PlaneGeometry, SphereGeometry, Vector3,
 } from 'three';
 
-export type TargetKind = 'wall' | 'sphere' | 'cube' | 'cylinder' | 'corner' | 'none';
+export type TargetKind = 'wall' | 'sphere' | 'cube' | 'cylinder' | 'corner' | 'hall' | 'arena' | 'none';
 
 export const TARGETS: readonly { id: TargetKind; label: string }[] = [
   { id: 'wall', label: '壁' },
@@ -10,10 +10,21 @@ export const TARGETS: readonly { id: TargetKind; label: string }[] = [
   { id: 'cube', label: '立方体' },
   { id: 'cylinder', label: '円柱' },
   { id: 'corner', label: '部屋の角' },
+  { id: 'hall', label: 'コンサートホール' },
+  { id: 'arena', label: 'アリーナ' },
   { id: 'none', label: 'なし（ヘイズのみ）' },
 ];
 
-const FLOOR = 2.2;
+// 会場の大きさ（m）。実際の会場を参考にしたおおよその値
+// floor: プロジェクターの床からの高さ、depth: 選んだときの奥行き（壁までの距離）
+export interface Room { width: number; height: number; floor: number; depth: number }
+export const ROOMS: Partial<Record<TargetKind, Room>> = {
+  // 2000席くらいのホール。プロジェクターはステージ上
+  hall: { width: 30, height: 16, floor: 3, depth: 45 },
+  // 大きめの屋内アリーナ。プロジェクターはトラス上
+  arena: { width: 70, height: 30, floor: 5, depth: 110 },
+};
+const DEFAULT_FLOOR = 2.2;
 const material = new MeshBasicMaterial({ color: 0x161616 });
 
 // ビームが当たる物。プロジェクターは原点で -z 方向を向いている。
@@ -23,6 +34,9 @@ export class Surfaces {
   readonly group = new Group();
   private kind: TargetKind = 'wall';
   private d = 8;
+  private room: Room | null = null;
+  // プロジェクターから床までの高さ
+  floor = DEFAULT_FLOOR;
   // 物体の置き場所（壁の手前）と大きさ
   private center = 6;
   private size = 1.2;
@@ -34,6 +48,8 @@ export class Surfaces {
   build(kind: TargetKind, distance: number) {
     this.kind = kind;
     this.d = distance;
+    this.room = ROOMS[kind] ?? null;
+    this.floor = this.room?.floor ?? DEFAULT_FLOOR;
     this.center = distance * 0.72;
     this.size = distance * 0.16;
     this.group.clear();
@@ -45,8 +61,22 @@ export class Surfaces {
     wall.position.z = -distance - 0.01;
     const floor = new Mesh(new PlaneGeometry(w, w), material);
     floor.rotation.x = -Math.PI / 2;
-    floor.position.y = -FLOOR - 0.01;
+    floor.position.y = -this.floor - 0.01;
     this.group.add(wall, floor);
+
+    if (this.room) {
+      const { width, height } = this.room;
+      const ceil = new Mesh(new PlaneGeometry(width, w), material);
+      ceil.rotation.x = Math.PI / 2;
+      ceil.position.y = height - this.floor + 0.01;
+      const left = new Mesh(new PlaneGeometry(w, h), material);
+      left.rotation.y = Math.PI / 2;
+      left.position.x = -width / 2 - 0.01;
+      const right = new Mesh(new PlaneGeometry(w, h), material);
+      right.rotation.y = -Math.PI / 2;
+      right.position.x = width / 2 + 0.01;
+      this.group.add(ceil, left, right);
+    }
 
     if (kind === 'corner') {
       const side = new Mesh(new PlaneGeometry(w, h), material);
@@ -82,7 +112,12 @@ export class Surfaces {
   hit(tx: number, ty: number): number {
     if (this.kind === 'none') return Infinity;
     let t = this.d;
-    if (ty < 0) t = Math.min(t, FLOOR / -ty);
+    if (ty < 0) t = Math.min(t, this.floor / -ty);
+    if (this.room) {
+      const { width, height } = this.room;
+      if (ty > 0) t = Math.min(t, (height - this.floor) / ty);
+      if (tx !== 0) t = Math.min(t, width / 2 / Math.abs(tx));
+    }
     switch (this.kind) {
       case 'corner':
         if (tx < 0) t = Math.min(t, this.sideX() / -tx);

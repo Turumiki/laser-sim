@@ -14,7 +14,7 @@ import { startLoop } from '../engine/loop';
 import { Simulation } from '../engine/simulation';
 import { connectSync } from '../sync/client';
 import { Beams, type Rig } from './beams';
-import { Surfaces, TARGETS, type TargetKind } from './surfaces';
+import { ROOMS, Surfaces, TARGETS, type TargetKind } from './surfaces';
 
 // レーザーが空間にどう出るかを3Dで見る（隠し機能）。設定は操作画面と同期する
 const params = new URLSearchParams(location.search);
@@ -72,7 +72,7 @@ const placeGrid = () => {
   if (grid) { scene.remove(grid); grid.dispose(); }
   const size = Math.max(40, Math.ceil(vs.distance * 3));
   grid = new GridHelper(size, Math.min(size, 300), 0x1a1a1a, 0x111111);
-  grid.position.y = -2.2;
+  grid.position.y = -surfaces.floor;
   scene.add(grid);
 };
 const surfaces = new Surfaces();
@@ -125,7 +125,7 @@ function buildRigPanel() {
   const rows: [Exclude<keyof ViewerSettings, 'target'>, string, number, number, number][] = [
     ['angle', '走査角', 10, 80, 1],
     ['haze', 'ヘイズ', 0.1, 5, 0.05],
-    ['distance', '壁までの距離', 2, 100, 0.5],
+    ['distance', '壁までの距離', 2, 150, 0.5],
     ['bloom', 'ブルーム', 0, 3, 0.05],
     ['smoke', 'スモーク', 0, 1, 0.05],
     ['grain', 'スモークの粒', 0.2, 2, 0.05],
@@ -137,8 +137,16 @@ function buildRigPanel() {
   select.value = vs.target;
   select.addEventListener('change', () => {
     vs.target = select.value as TargetKind;
+    const room = ROOMS[vs.target];
+    if (room) {
+      // 会場を選んだら、奥行きを合わせて客席からの視点にする
+      vs.distance = room.depth;
+      camera.position.set(room.width * 0.2, -room.floor + 1.6, -room.depth * 0.7);
+      controls.target.set(0, room.height * 0.25, 0);
+    }
     placeWall();
     saveLocal(RIG_KEY, vs);
+    if (room) buildRigPanel();
   });
   targetRow.append('投影先', select);
   panel.append(targetRow);
@@ -163,5 +171,8 @@ function buildRigPanel() {
   const note = document.createElement('p');
   note.textContent = 'ドラッグで回転、右ドラッグで移動、ホイールで拡大。H でこの枠を隠す';
   panel.append(note);
-  addEventListener('keydown', e => { if (e.key === 'h' || e.key === 'H') panel.classList.toggle('hidden'); });
 }
+
+addEventListener('keydown', e => {
+  if (e.key === 'h' || e.key === 'H') document.getElementById('rig')!.classList.toggle('hidden');
+});
