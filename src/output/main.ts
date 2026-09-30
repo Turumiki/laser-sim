@@ -29,7 +29,9 @@ try {
 }
 if (saved?.animT) engine.scanner.animT = saved.animT;
 
-connectSync(store, { channel, role: 'output' });
+const sync = connectSync(store, { channel, role: 'output' });
+// 開発中だけ、ブラウザのコンソールから中身を見られるようにする
+if (import.meta.env.DEV) Object.assign(window, { laser: { engine, sync, store } });
 
 // OBSではウィンドウと出力サイズが一致するので等倍。大きいウィンドウでも拡大はしない
 const fit = () => {
@@ -61,6 +63,7 @@ fit();
 startLoop(dt => {
   timer.begin();
   engine.update(dt);
+  engine.sim.syncAnim(sync.time.animNow());
   engine.render();
   timer.end();
 });

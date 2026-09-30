@@ -31,7 +31,7 @@ const engine = new Engine(canvas, store);
 if (saved?.animT) engine.scanner.animT = saved.animT;
 
 let sync: SyncStatus = 'connecting';
-connectSync(store, { channel, role: 'control', onStatus: s => { sync = s; } });
+const link = connectSync(store, { channel, role: 'control', onStatus: s => { sync = s; } });
 
 const recorder = new Recorder(canvas);
 buildToolbar($('toolbar'), store, recorder, channel);
@@ -69,6 +69,7 @@ setInterval(() => {
 startLoop(dt => {
   timer.begin();
   engine.update(dt);
+  engine.sim.syncAnim(link.time.animNow());
   engine.render();
   timer.end();
 });

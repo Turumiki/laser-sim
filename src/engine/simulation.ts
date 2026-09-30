@@ -22,6 +22,14 @@ export class Simulation {
     else this.scanner.advance(scanDt, s.animSpeed);
   }
 
+  // サーバーの時間軸に合わせる。大きくずれていれば飛ばし、小さければ少しずつ寄せる（動きが跳ねないように）
+  syncAnim(target: number | null) {
+    if (target === null) return;
+    const sc = this.scanner, diff = target - sc.animT;
+    if (Math.abs(diff) > 0.5) sc.animT = target;
+    else sc.animT += diff * 0.05;
+  }
+
   // ベクター表示用。今の時刻のフレームを組み立てて返す
   currentFrame(): Frame {
     buildFrame(this.frame, this.store.get(), this.scanner.animT);

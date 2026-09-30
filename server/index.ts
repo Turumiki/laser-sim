@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { networkInterfaces } from 'node:os';
 import path from 'node:path';
 import { WebSocketServer, type WebSocket } from 'ws';
+import { Clocks } from './clock.ts';
 import { StateStore } from './state.ts';
 import { serveStatic } from './static.ts';
 
@@ -12,16 +13,20 @@ const PORT = Number(process.env.PORT) || 8765;
 
 const states = new StateStore(path.join(ROOT, '.state.json'));
 const channels = new Map<string, Set<WebSocket>>();
+const clocks = new Clocks();
 
-function broadcast(ch: string, data: Record<string, unknown>, from: string | null) {
-  const msg = JSON.stringify({ type: 'patch', from, data });
+function broadcast(ch: string, data: Record<string, unknown>, from: string | null, withClock: boolean) {
+  const clock = withClock ? clocks.get(ch, states.get(ch)) : undefined;
+  const msg = JSON.stringify({ type: 'patch', from, data, clock });
   for (const ws of channels.get(ch) ?? []) if (ws.readyState === ws.OPEN) ws.send(msg);
 }
 
 function applyPatch(ch: string, data: unknown, from: string | null) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
-  states.patch(ch, data as Record<string, unknown>);
-  broadcast(ch, data as Record<string, unknown>, from);
+  const patch = data as Record<string, unknown>;
+  const timeChanged = clocks.update(ch, states.get(ch), patch);
+  states.patch(ch, patch);
+  broadcast(ch, patch, from, timeChanged);
   return true;
 }
 
@@ -90,11 +95,13 @@ server.on('upgrade', (req, socket, head) => {
     let set = channels.get(ch);
     if (!set) channels.set(ch, set = new Set());
     set.add(ws);
-    ws.send(JSON.stringify({ type: 'hello', id, data: states.get(ch) }));
+    ws.send(JSON.stringify({ type: 'hello', id, data: states.get(ch), clock: clocks.get(ch, states.get(ch)) }));
     ws.on('message', raw => {
       try {
         const msg = JSON.parse(String(raw));
         if (msg?.type === 'patch') applyPatch(ch, msg.data, id);
+        // 各画面がサーバーとの時計のずれを測る用
+        if (msg?.type === 'ping') ws.send(JSON.stringify({ type: 'pong', t: msg.t, server: Date.now() }));
       } catch { /* 壊れたメッセージは無視 */ }
     });
     ws.on('close', () => set.delete(ws));

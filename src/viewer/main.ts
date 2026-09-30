@@ -20,7 +20,7 @@ const params = new URLSearchParams(location.search);
 const channel = params.get('ch') || 'default';
 
 const store = new Store({ ...DEFAULTS, ...sanitize(Object.fromEntries(params)) });
-connectSync(store, { channel, role: 'output' });
+const sync = connectSync(store, { channel, role: 'output' });
 const sim = new Simulation(store);
 
 // ビューア独自の設定（同期しない）
@@ -85,6 +85,7 @@ buildRigPanel();
 
 startLoop(dt => {
   sim.update(dt);
+  sim.syncAnim(sync.time.animNow());
   const s = store.get();
   if (s.mode === 'scan') beams.fromScanner(sim.scanner, s);
   else beams.fromFrame(sim.currentFrame(), s);
