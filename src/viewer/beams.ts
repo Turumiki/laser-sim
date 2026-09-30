@@ -84,12 +84,24 @@ const SMOKE_GLSL = `
   float fbm(vec3 p) {
     return 0.5 * noise(p) + 0.25 * noise(p * 2.03 + 1.7) + 0.125 * noise(p * 4.1 + 9.2);
   }
-  float smoke(vec3 w) {
-    // ヘイズは横に広がって層になりやすいので、縦方向を詰めて筋っぽくする
-    vec3 p = w * uGrain * vec3(0.7, 1.8, 0.7) + vec3(uTime * 0.05, uTime * 0.03, -uTime * 0.04);
-    p += 2.0 * vec3(fbm(p + 3.1), fbm(p + 7.4), fbm(p + 1.3)) - 1.0;
-    float d = smoothstep(0.25, 0.65, fbm(p));
-    return mix(1.0, d * 2.0, uSmoke);
+  // 細い筋（煙の糸）になるノイズ
+  float ridge(vec3 p) {
+    return 1.0 - abs(2.0 * noise(p) - 1.0);
+  }
+  float smoke1(vec3 w) {
+    // ヘイズは横に広がって層になりやすいので、縦方向を詰める
+    vec3 p = w * uGrain * vec3(0.7, 1.8, 0.7) + vec3(uTime * 0.05, uTime * 0.02, -uTime * 0.04);
+    // 流れながら形も変わるよう、歪ませる量を時間で動かす
+    vec3 q = p * 0.5 + vec3(0.0, 0.0, uTime * 0.07);
+    p += 1.6 * (vec3(noise(q + 3.1), noise(q + 7.4), noise(q + 1.3)) - 0.5);
+    float d = fbm(p) * 0.7 + ridge(p * 2.3) * 0.3;
+    return smoothstep(0.38, 0.72, d);
+  }
+  // 光の膜には厚みがある（遠いほどビームが広がって厚い）。視線に沿って厚みの中を数か所測って平均する
+  float smoke(vec3 w, vec3 viewDir) {
+    float thick = 0.03 + 0.05 * length(w);
+    float d = (smoke1(w - viewDir * thick) + smoke1(w) + smoke1(w + viewDir * thick)) / 3.0;
+    return mix(1.0, d * 1.7, uSmoke);
   }
 `;
 
@@ -103,9 +115,11 @@ const beamVertex = `
   varying vec3 vColor;
   varying vec3 vView;
   varying vec3 vWorld;
+  varying vec3 vEye;
   void main() {
     vColor = color;
     vWorld = (modelMatrix * vec4(position, 1.0)).xyz;
+    vEye = vWorld - cameraPosition;
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     vView = mv.xyz;
     gl_Position = projectionMatrix * mv;
@@ -121,10 +135,11 @@ const sheetMaterial = (uniforms: SmokeUniforms) => new ShaderMaterial({
     varying vec3 vColor;
     varying vec3 vView;
     varying vec3 vWorld;
+    varying vec3 vEye;
     void main() {
       vec3 n = normalize(cross(dFdx(vView), dFdy(vView)));
       float c = abs(dot(n, normalize(-vView)));
-      gl_FragColor = vec4(vColor / max(c, 0.12) * smoke(vWorld), 1.0);
+      gl_FragColor = vec4(vColor / max(c, 0.12) * smoke(vWorld, normalize(vEye)), 1.0);
     }`,
 });
 
@@ -135,8 +150,9 @@ const rayMaterial = (uniforms: SmokeUniforms) => new ShaderMaterial({
   fragmentShader: SMOKE_GLSL + `
     varying vec3 vColor;
     varying vec3 vWorld;
+    varying vec3 vEye;
     void main() {
-      gl_FragColor = vec4(vColor * smoke(vWorld), 1.0);
+      gl_FragColor = vec4(vColor * smoke(vWorld, normalize(vEye)), 1.0);
     }`,
 });
 
