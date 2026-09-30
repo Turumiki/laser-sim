@@ -1,12 +1,14 @@
 export type RenderMode = 'clean' | 'scan';
 export type ExposureShape = 'box' | 'exp';
 export type ColorMode = 'single' | 'rainbow' | 'cycle';
+export type Look = 'display' | 'source';
 
 export interface Settings {
   pattern: string;
   paused: boolean;
 
   mode: RenderMode;
+  look: Look;
   output: string;
   fps: string;
   clip: boolean;
@@ -127,9 +129,13 @@ export const PARAMS: readonly ParamDef[] = [
   { kind: 'bool', key: 'exposureSync', label: '1コマに合わせる', hint: '露光時間を映像の1コマ（1 ÷ 映像のfps）にする。コマの間に写らない時間ができない。映像のfpsは「出力」で設定', group: 'camera' },
   { kind: 'number', key: 'exposure', label: '露光時間', hint: '光を積算する時間。16.7ms（1/60秒）で1コマ分', group: 'camera', inactive: s => s.exposureSync, min: 0.2, max: 200, log: true, digits: 1, unit: 'ms' },
   { kind: 'bool', key: 'eye', label: '目の感度', hint: '色ごとの見かけの明るさ。人の目は緑に敏感で、同じ出力でも赤や青は暗く見える（一般的なRGB機: 赤638nm・緑520nm・青450nm）。Unityに渡す映像は、狙った色のままにしたいならオフ', group: 'camera' },
-  { kind: 'number', key: 'glow', label: 'グロー', hint: 'ビーム周辺のにじみ。ヘイズやレンズでの散乱に相当', group: 'camera', min: 0, max: 3, digits: 2 },
+  { kind: 'number', key: 'glow', label: 'グロー', hint: 'ビーム周辺のにじみ。ヘイズやレンズでの散乱に相当。光源用では使わない', group: 'camera', inactive: s => s.look === 'source', min: 0, max: 3, digits: 2 },
   { kind: 'number', key: 'bright', label: '明るさ', hint: '露光量。上げると強く当たった部分が白く飛ぶ', group: 'camera', min: 0.1, max: 5, log: true, digits: 2 },
 
+  { kind: 'enum', key: 'look', label: '用途', hint: '表示用: そのまま画面に映す見た目（強い所は白く飛び、にじみが付く）。光源用: Unity・Unreal・TouchDesigner などでクッキーやボリュームライトの元にする映像。白飛びとにじみを入れず、明るさは光量に比例させる。出力サイズは正方形がおすすめ', group: 'output', options: [
+    { value: 'display', label: '表示用' },
+    { value: 'source', label: '光源用' },
+  ] },
   { kind: 'enum', key: 'output', label: '出力サイズ', hint: '出力解像度。レーザーの描画範囲は常に中央の正方形', group: 'output',
     options: Object.keys(OUTPUT_SIZES).map(v => ({ value: v, label: v.replace('x', ' × ') })) },
   { kind: 'enum', key: 'fps', label: '映像のfps', hint: '書き出し・録画のfpsと、「1コマに合わせる」露光の基準。OBSのブラウザソースも同じfpsにする', group: 'output', options: [
@@ -149,6 +155,7 @@ export const DEFAULTS: Readonly<Settings> = {
   pattern: 'circle',
   paused: false,
   mode: 'scan',
+  look: 'display',
   output: '1920x1080',
   fps: '60',
   clip: false,

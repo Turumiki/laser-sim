@@ -1,4 +1,4 @@
-import { outputSize } from '../core/params';
+import { outputSize, type Look } from '../core/params';
 import type { Store } from '../core/store';
 import { Instances, frameInstances, scanInstances, type View } from '../render/instances';
 import { LaserRenderer } from '../render/renderer';
@@ -30,9 +30,10 @@ export class Engine {
     this.sim.update(dt);
   }
 
-  // size を渡すと、出力サイズの代わりにそのサイズで描く
-  render(size?: readonly [number, number]) {
+  // size を渡すと、出力サイズの代わりにそのサイズで描く。look を渡すと用途の設定より優先する
+  render(size?: readonly [number, number], look?: Look) {
     const s = this.store.get();
+    const linear = (look ?? s.look) === 'source';
     const [W, H] = size ?? outputSize(s);
     const side = Math.min(W, H);
     // 太さはFHD基準のpx。解像度が変わっても見た目の比率は同じにする
@@ -56,8 +57,9 @@ export class Engine {
     this.renderer.draw(this.inst, {
       sigma: view.sigma,
       sigmaG: view.sigma * 6,
-      glow: s.glow,
+      glow: linear ? 0 : s.glow,
       exposure: s.bright,
+      linear,
       clip: s.clip ? [(W - side) / 2, (H - side) / 2, side, side] : null,
     });
   }

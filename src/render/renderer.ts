@@ -68,14 +68,25 @@ void main() {
   gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
 }`;
 
-// 積んだ光量を表示用に変換。強く当たった所は白く飛ぶ（実物のレーザーの芯と同じ）
+// 積んだ光量を映像に変換する。
+// 表示用: 強く当たった所は白く飛ぶ（カメラで撮ったレーザーの芯と同じ）
+// 光源用: 光量に比例した値をそのまま sRGB で書く。白に寄せず、上限で頭打ちにするだけ。
+//   係数は、1本の線（全出力で描いたシート）が飽和せず、止まったビームは頭打ちになる程度
 const TONE_FS = `#version 300 es
 precision highp float;
 uniform sampler2D u_tex;
 uniform float u_exposure;
+uniform bool u_linear;
 out vec4 o;
+vec3 srgb(vec3 c) {
+  return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
+}
 void main() {
   vec3 E = texelFetch(u_tex, ivec2(gl_FragCoord.xy), 0).rgb * u_exposure;
+  if (u_linear) {
+    o = vec4(srgb(clamp(E * 0.25, 0.0, 1.0)), 1.0);
+    return;
+  }
   float m = max(E.r, max(E.g, E.b));
   E += vec3(max(m - 1.0, 0.0) * 0.4);
   o = vec4(1.0 - exp(-E * 1.3), 1.0);
@@ -86,6 +97,8 @@ export interface DrawParams {
   sigmaG: number;
   glow: number;
   exposure: number;
+  // 光源用（光量に比例した値）で書く
+  linear: boolean;
   // この矩形の外には描かない [x, y, w, h]（上が原点）
   clip: readonly [number, number, number, number] | null;
 }
@@ -152,6 +165,7 @@ export class LaserRenderer {
     for (const n of ['u_res', 'u_sigma', 'u_sigmaG', 'u_glow']) u[n] = gl.getUniformLocation(splat, n);
     u.u_tex = gl.getUniformLocation(tone, 'u_tex');
     u.u_exposure = gl.getUniformLocation(tone, 'u_exposure');
+    u.u_linear = gl.getUniformLocation(tone, 'u_linear');
 
     this.res = { splat, tone, vao, instBuf, instCap: 0, tex: gl.createTexture()!, fbo: gl.createFramebuffer()!, u };
   }
@@ -224,6 +238,7 @@ export class LaserRenderer {
     gl.bindTexture(gl.TEXTURE_2D, r.tex);
     gl.uniform1i(r.u.u_tex, 0);
     gl.uniform1f(r.u.u_exposure, p.exposure);
+    gl.uniform1i(r.u.u_linear, p.linear ? 1 : 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 }

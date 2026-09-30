@@ -8,7 +8,7 @@ interface Cookie {
   texture: CanvasTexture;
 }
 
-// チャンネルごとの「Unityに渡すのと同じ映像」。レーザーの描画範囲（正方形）をクッキーとして使う。
+// チャンネルごとの「Unityに渡すのと同じ映像」（光源用）。レーザーの描画範囲（正方形）をクッキーとして使う。
 // シミュレーションは3Dビューアのものを使い回すので、ベクター表示と同じ動きになる
 export class Cookies {
   private map = new Map<Simulation, Cookie>();
@@ -19,7 +19,7 @@ export class Cookies {
     if (!c) {
       const canvas = document.createElement('canvas');
       const engine = new Engine(canvas, store, sim);
-      engine.render([this.size, this.size]);
+      engine.render([this.size, this.size], 'source');
       const texture = new CanvasTexture(canvas);
       texture.colorSpace = SRGBColorSpace;
       // 空間の光は、少しぼかした段（ミップマップ）を読む。細いレーザーの線を取りこぼさないように
@@ -41,7 +41,7 @@ export class Cookies {
         this.map.delete(sim);
         continue;
       }
-      c.engine.render([this.size, this.size]);
+      c.engine.render([this.size, this.size], 'source');
       c.texture.needsUpdate = true;
     }
   }
