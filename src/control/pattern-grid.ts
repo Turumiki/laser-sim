@@ -3,9 +3,10 @@ import type { Store } from '../core/store';
 import { el } from './dom';
 
 const CATEGORIES: { id: PatternCategory; label: string }[] = [
-  { id: 'line', label: 'Lines' },
-  { id: 'shape', label: 'Shapes' },
-  { id: 'test', label: 'Test' },
+  { id: 'line', label: '線' },
+  { id: 'shape', label: '図形' },
+  { id: 'beam', label: 'ビーム演出' },
+  { id: 'test', label: 'テスト' },
 ];
 
 export function buildPatternGrid(root: HTMLElement, store: Store) {
@@ -15,7 +16,7 @@ export function buildPatternGrid(root: HTMLElement, store: Store) {
     if (!items.length) continue;
     const clips = el('div', { class: 'clips' });
     for (const p of items) {
-      const b = el('button', { class: 'clip', title: p.id }, p.name);
+      const b = el('button', { class: 'clip', title: p.hint ?? p.name }, p.name);
       b.addEventListener('click', () => store.set({ pattern: p.id }));
       buttons.set(p.id, b);
       clips.append(b);
