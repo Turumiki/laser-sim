@@ -126,6 +126,10 @@ button, input, select { font: inherit; color: inherit; }
 .row select { height: 18px; border: 1px solid var(--line); border-radius: 2px; background: var(--bg0); padding: 0 2px; }
 .row input[type=checkbox] { margin: 0; accent-color: var(--accent); }
 .row input[type=color] { width: 100%; height: 18px; padding: 0; border: 1px solid var(--line); background: var(--bg0); }
+.row.changed { box-shadow: inset 2px 0 0 var(--accent); }
+.row.changed > label { color: var(--text); }
+.inspector-head { display: flex; justify-content: flex-end; padding: 4px 8px; background: var(--bg1); border-bottom: 1px solid var(--line); }
+.inspector-head .tb { height: 20px; font-size: 11px; }
 .presets { display: flex; gap: 4px; padding: 4px 8px 2px 14px; }
 .presets .tb { height: 18px; padding: 0 6px; font-size: 11px; }
 

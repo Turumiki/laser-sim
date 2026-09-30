@@ -1,4 +1,4 @@
-import { GROUPS, PARAMS, PRESETS, type NumberParam, type ParamDef, type Settings } from '../core/params';
+import { DEFAULTS, GROUPS, PARAMS, PRESETS, type NumberParam, type ParamDef, type Settings } from '../core/params';
 import { loadLocal, saveLocal } from '../core/persist';
 import type { Store } from '../core/store';
 import { el } from './dom';
@@ -13,6 +13,13 @@ export function buildInspector(root: HTMLElement, store: Store) {
   const updaters: Updater[] = [];
   const closed = new Set(loadLocal<string[]>(CLOSED_KEY) ?? []);
 
+  const resetAll = el('button', { class: 'tb', title: 'パターンと出力サイズ以外をすべて初期値に戻す' }, 'すべて初期値に戻す');
+  resetAll.addEventListener('click', () => {
+    const { pattern, output, ...rest } = DEFAULTS;
+    store.set(rest);
+  });
+  root.append(el('div', { class: 'inspector-head' }, resetAll));
+
   for (const g of GROUPS) {
     const rows = el('div', { class: 'rows' });
     const head = el('h3', {}, g.label);
@@ -26,8 +33,13 @@ export function buildInspector(root: HTMLElement, store: Store) {
     if (g.id === 'debug') rows.append(presetRow(store));
     for (const p of PARAMS.filter(p => p.group === g.id && !IN_TOOLBAR.has(p.key))) {
       const [row, update] = paramRow(p, store);
+      // 初期値から変えた項目には印を付け、名前のダブルクリックで戻せるようにする
+      row.querySelector('label')!.addEventListener('dblclick', () => store.set({ [p.key]: DEFAULTS[p.key] } as Partial<Settings>));
       rows.append(row);
-      updaters.push(update);
+      updaters.push(st => {
+        update(st);
+        row.classList.toggle('changed', !isDefault(p, st));
+      });
     }
     root.append(section);
   }
@@ -48,7 +60,7 @@ function presetRow(store: Store) {
 }
 
 function paramRow(p: ParamDef, store: Store): [HTMLElement, Updater] {
-  const label = el('label', p.hint ? { title: p.hint } : {}, p.label);
+  const label = el('label', { title: `${p.hint ? p.hint + '\n' : ''}ダブルクリックで初期値に戻す` }, p.label);
   const set = (v: unknown) => store.set({ [p.key]: v } as Partial<Settings>);
 
   switch (p.kind) {
@@ -120,4 +132,11 @@ function numberRow(p: NumberParam, label: HTMLElement, store: Store): [HTMLEleme
     if (document.activeElement !== input) input.value = v.toFixed(p.digits);
     bar.style.width = `${Math.max(0, Math.min(1, frac(v))) * 100}%`;
   }];
+}
+
+function isDefault(p: ParamDef, s: Readonly<Settings>) {
+  const v = s[p.key], d = DEFAULTS[p.key];
+  // 数値は表示している桁で比べる（ドラッグで丸めた値と初期値の小さなずれは同じとみなす）
+  if (p.kind === 'number') return Math.abs((v as number) - (d as number)) < 0.5 * 10 ** -p.digits;
+  return v === d;
 }
