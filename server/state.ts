@@ -18,6 +18,12 @@ export class StateStore {
     setInterval(() => this.flush(), 1000).unref();
   }
 
+  // 全チャンネルの中身を作り直す（読み込んだ古いデータの掃除用）
+  rewrite(fn: (d: Data) => Data) {
+    for (const ch of Object.keys(this.data)) this.data[ch] = fn(this.data[ch]);
+    this.dirty = true;
+  }
+
   get(ch: string): Data {
     return this.data[ch] ?? {};
   }

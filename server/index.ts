@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { networkInterfaces } from 'node:os';
 import path from 'node:path';
 import { WebSocketServer, type WebSocket } from 'ws';
+import { sanitize } from '../src/core/params.ts';
 import { Clocks } from './clock.ts';
 import { ShowPlayer } from './show.ts';
 import { StateStore } from './state.ts';
@@ -13,6 +14,8 @@ const DEV = process.argv.includes('--dev');
 const PORT = Number(process.env.PORT) || 8765;
 
 const states = new StateStore(path.join(ROOT, '.state.json'));
+// 以前のバージョンで保存された、型や範囲が合わない値を掃除する
+states.rewrite(d => sanitize(d) as Record<string, unknown>);
 const channels = new Map<string, Set<WebSocket>>();
 const clocks = new Clocks();
 const shows = new ShowPlayer(path.join(ROOT, '.shows.json'), (ch, values) => applyPatch(ch, values, null), broadcastShow);
@@ -40,7 +43,9 @@ function broadcast(ch: string, data: Record<string, unknown>, from: string | nul
 
 function applyPatch(ch: string, data: unknown, from: string | null) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
-  const patch = data as Record<string, unknown>;
+  // 画面側と同じ決まりで型と範囲を揃え、知らないキーは捨てる
+  const patch = sanitize(data as Record<string, unknown>) as Record<string, unknown>;
+  if (!Object.keys(patch).length) return true;
   const timeChanged = clocks.update(ch, states.get(ch), patch);
   states.patch(ch, patch);
   broadcast(ch, patch, from, timeChanged);
