@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ILDA Laser Sim</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --bg:#000; --panel:rgba(12,14,16,.92); --fg:#d8e0e0; --dim:#7a8686; --accent:#3dff7a; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--fg);
+    font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; overflow:hidden; }
+  /* 1920x1080 固定キャンバスをウィンドウに合わせて等比表示 */
+  #cv { cursor:grab; position:absolute; inset:0; margin:auto; width:100vw; height:56.25vw;
+    max-height:100vh; max-width:177.78vh; background:#000; display:block; }
+  #panel { position:absolute; top:8px; right:8px; width:280px; max-height:calc(100vh - 16px);
+    overflow:auto; background:var(--panel); border:1px solid #243; border-radius:6px; padding:10px; }
+  #panel.hidden, #hud.hidden { display:none; }
+  h1 { font-size:13px; margin:0 0 8px; color:var(--accent); }
+  .row { margin:6px 0; }
+  .row label { display:flex; justify-content:space-between; color:var(--dim); }
+  .row label b { color:var(--fg); font-weight:normal; }
+  input[type=range], select { width:100%; accent-color:var(--accent); }
+  select, button { background:#161a1c; color:var(--fg); border:1px solid #2c3436; border-radius:4px; padding:4px; font:inherit; }
+  button { cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+  .btns { display:flex; flex-wrap:wrap; gap:4px; margin:6px 0; }
+  .check { display:flex; gap:6px; align-items:center; color:var(--dim); margin:4px 0; }
+  hr { border:0; border-top:1px solid #243; margin:8px 0; }
+  .note { color:var(--dim); font-size:11px; }
+  #hud { position:absolute; left:8px; bottom:8px; color:var(--dim); background:rgba(0,0,0,.6); padding:4px 6px; border-radius:4px; }
+</style>
+</head>
+<body>
+<canvas id="cv" width="1920" height="1080"></canvas>
+<div id="hud"></div>
+<div id="panel">
+  <h1>ILDA Laser Sim — 1920×1080</h1>
+  <div class="row"><label>パターン</label><select id="pattern"></select></div>
+  <div class="row"><label>カラー</label>
+    <select id="colorMode">
+      <option value="single">単色</option>
+      <option value="rainbow">レインボー（軌跡に沿って）</option>
+      <option value="cycle">カラーサイクル</option>
+    </select>
+  </div>
+  <div class="row"><label>色</label><input type="color" id="color" value="#00ff40" style="width:100%"></div>
+  <hr>
+  <div class="note">プリセット</div>
+  <div class="btns">
+    <button data-preset="real">リアルタイム</button>
+    <button data-preset="trail">彗星トレイル</button>
+    <button data-preset="slow">スロー（点を見る）</button>
+    <button data-preset="flicker">低pps（ちらつき）</button>
+  </div>
+  <div id="sliders"></div>
+  <label class="check"><input type="checkbox" id="head"> 先頭の点を強調</label>
+  <label class="check"><input type="checkbox" id="showBlank"> ブランキング移動を表示（確認用）</label>
+  <hr>
+  <div class="btns">
+    <button id="copyUrl">OBS用URLをコピー</button>
+    <button id="pause">一時停止</button>
+  </div>
+  <hr>
+  <div class="note">動画書き出し（1920×1080）</div>
+  <div class="row"><label>長さ</label>
+    <select id="recDur">
+      <option value="0">手動で停止</option>
+      <option value="5">5秒</option>
+      <option value="10" selected>10秒</option>
+      <option value="30">30秒</option>
+      <option value="60">60秒</option>
+    </select>
+  </div>
+  <div class="btns"><button id="rec">● 録画開始</button></div>
+  <div class="note" id="recInfo"></div>
+  <hr>
+  <div class="note">
+    マウス: ドラッグで移動 / ホイールでサイズ / Shift+ドラッグ・Shift+ホイールで角度 / ダブルクリックで中央へ<br>
+    H: UIの表示/非表示　Space: 一時停止<br>URLに <b>?obs=1</b> を付けるとUIなしで起動します。
+  </div>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d');
+const W = 1920, H = 1080;
+
+// ---------- 設定 ----------
+const SLIDERS = [
+  { id:'pps',       label:'スキャン速度 pps', min:1000, max:60000, step:500, val:30000, fmt:v=>(v/1000).toFixed(1)+'k' },
+  { id:'timeScale', label:'スロー倍率',        min:0.0003, max:1, log:true, val:1, fmt:v=>'×'+(v>=0.1?v.toFixed(2):v.toPrecision(2)) },
+  { id:'persist',   label:'残像（スキャナ時間）', min:0.2, max:200, log:true, val:35, fmt:v=>v.toPrecision(3)+'ms' },
+  { id:'lag',       label:'ガルバ遅れ',        min:0, max:1, step:0.01, val:0.12, fmt:v=>v.toFixed(2)+'ms' },
+  { id:'density',   label:'点間隔（小=密）',    min:0.004, max:0.1, log:true, val:0.025, fmt:v=>v.toFixed(3) },
+  { id:'animSpeed', label:'アニメ速度',        min:0, max:4, step:0.01, val:1, fmt:v=>v.toFixed(2) },
+  { id:'rotSpeed',  label:'回転速度',          min:-360, max:360, step:1, val:0, fmt:v=>v.toFixed(0)+'°/s' },
+  { id:'angle',     label:'角度',              min:0, max:360, step:1, val:0, fmt:v=>v.toFixed(0)+'°' },
+  { id:'offX',      label:'位置 X',            min:-1.78, max:1.78, step:0.001, val:0, fmt:v=>v.toFixed(2) },
+  { id:'offY',      label:'位置 Y',            min:-1, max:1, step:0.001, val:0, fmt:v=>v.toFixed(2) },
+  { id:'size',      label:'投影サイズ',        min:0.05, max:1.5, step:0.01, val:0.85, fmt:v=>v.toFixed(2) },
+  { id:'beam',      label:'ビーム太さ',        min:0.5, max:10, step:0.1, val:2.2, fmt:v=>v.toFixed(1) },
+  { id:'glow',      label:'グロー',            min:0, max:3, step:0.01, val:1, fmt:v=>v.toFixed(2) },
+  { id:'bright',    label:'明るさ',            min:0.1, max:3, step:0.01, val:1.1, fmt:v=>v.toFixed(2) },
+];
+const S = { pattern:'circle', colorMode:'single', color:'#00ff40', head:false, showBlank:false };
+const sliderByID = {};
+
+function toRange(c, v) { return c.log ? Math.round(1000 * Math.log(v / c.min) / Math.log(c.max / c.min)) : v; }
+function fromRange(c, x) { return c.log ? c.min * Math.pow(c.max / c.min, x / 1000) : +x; }
+
+for (const c of SLIDERS) {
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.innerHTML = `<label>${c.label} <b></b></label><input type="range">`;
+  const inp = row.querySelector('input'), out = row.querySelector('b');
+  if (c.log) { inp.min = 0; inp.max = 1000; inp.step = 1; } else { inp.min = c.min; inp.max = c.max; inp.step = c.step; }
+  c.set = v => { S[c.id] = v; inp.value = toRange(c, v); out.textContent = c.fmt(v); };
+  inp.addEventListener('input', () => { S[c.id] = fromRange(c, inp.value); out.textContent = c.fmt(S[c.id]); });
+  c.set(c.val);
+  sliderByID[c.id] = c;
+  $('sliders').appendChild(row);
+}
+
+function setSetting(k, v) {
+  if (sliderByID[k]) sliderByID[k].set(+v);
+  else if (k === 'head' || k === 'showBlank') { S[k] = v === true || v === '1'; $(k).checked = S[k]; }
+  else if (k in S) { if (k === 'pattern' && v !== S.pattern) frame = null; S[k] = v; $(k).value = v; }
+}
+
+// ---------- 色 ----------
+function hsv(h, s, v) {
+  const i = Math.floor(h * 6), f = h * 6 - i, p = v * (1 - s), q = v * (1 - f * s), t = v * (1 - (1 - f) * s);
+  const [r, g, b] = [[v,t,p],[q,v,p],[p,v,t],[p,q,v],[t,p,v],[v,p,q]][((i % 6) + 6) % 6];
+  return [r * 255 | 0, g * 255 | 0, b * 255 | 0];
+}
+function hex2rgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+
+// ---------- フレーム生成（ILDAと同じ「点列＋ブランキング」） ----------
+class FrameBuilder {
+  constructor(step) { this.p = []; this.x = 0; this.y = 0; this.step = step; this.started = false; }
+  push(x, y, on) { this.p.push({ x, y, on, r:0, g:0, b:0 }); this.x = x; this.y = y; }
+  moveTo(x, y) { // 消灯したまま移動
+    if (!this.started) { this.started = true; for (let i = 0; i < 4; i++) this.push(x, y, false); return; }
+    const x0 = this.x, y0 = this.y, n = Math.max(1, Math.ceil(Math.hypot(x - x0, y - y0) / 0.15));
+    this.push(x0, y0, false);
+    for (let i = 1; i <= n; i++) this.push(x0 + (x - x0) * i / n, y0 + (y - y0) * i / n, false);
+    for (let i = 0; i < 4; i++) this.push(x, y, false);
+  }
+  lineTo(x, y) {
+    const x0 = this.x, y0 = this.y, n = Math.max(1, Math.ceil(Math.hypot(x - x0, y - y0) / this.step));
+    for (let i = 1; i <= n; i++) this.push(x0 + (x - x0) * i / n, y0 + (y - y0) * i / n, true);
+  }
+  dwell(n) { for (let i = 0; i < n; i++) this.push(this.x, this.y, true); }
+  poly(pts, closed, corner = 3) {
+    this.moveTo(...pts[0]); this.dwell(corner);
+    for (let k = 1; k < pts.length; k++) { this.lineTo(...pts[k]); this.dwell(corner); }
+    if (closed) { this.lineTo(...pts[0]); this.dwell(corner); }
+  }
+  curve(fn) { // fn(u), u: 0..1
+    let len = 0, prev = fn(0);
+    for (let i = 1; i <= 256; i++) { const q = fn(i / 256); len += Math.hypot(q[0] - prev[0], q[1] - prev[1]); prev = q; }
+    const n = Math.max(8, Math.ceil(len / this.step));
+    this.moveTo(...fn(0));
+    for (let i = 1; i <= n; i++) { const [x, y] = fn(i / n); this.push(x, y, true); }
+  }
+}
+
+const TAU = Math.PI * 2;
+const tri = u => 1 - Math.abs(2 * u - 1); // 0→1→0（線を往復でなぞる）
+const PATTERNS = {
+  hline: { name:'横線', fn:(f, t) => {
+    f.curve(u => [-0.95 + 1.9 * tri(u), 0]);
+  }},
+  vline: { name:'縦線', fn:(f, t) => {
+    f.curve(u => [0, -0.95 + 1.9 * tri(u)]);
+  }},
+  rotline: { name:'回転ライン', fn:(f, t) => {
+    const a = t * 0.8, c = Math.cos(a), s = Math.sin(a);
+    f.curve(u => { const d = -0.95 + 1.9 * tri(u); return [d * c, d * s]; });
+  }},
+  lines: { name:'平行ライン', fn:(f, t) => {
+    for (let k = 0; k < 4; k++) {
+      const y = ((k / 4 + t * 0.15) % 1) * 1.8 - 0.9, dir = k % 2 ? -1 : 1;
+      f.curve(u => [dir * (-0.95 + 1.9 * u), y]);
+    }
+  }},
+  circle: { name:'円', fn:(f, t) => {
+    const r = 0.8 + 0.08 * Math.sin(t * 2);
+    f.curve(u => [r * Math.cos(u * TAU + t), r * Math.sin(u * TAU + t)]);
+  }},
+  star: { name:'スター', fn:(f, t) => {
+    const pts = [];
+    for (let i = 0; i < 10; i++) { const a = i * TAU / 10 + t * 0.8, r = i % 2 ? 0.35 : 0.85; pts.push([r * Math.sin(a), r * Math.cos(a)]); }
+    f.poly(pts, true);
+  }},
+  lissajous: { name:'リサージュ', fn:(f, t) => {
+    f.curve(u => [0.85 * Math.sin(3 * u * TAU + t * 0.6), 0.85 * Math.sin(2 * u * TAU)]);
+  }},
+  tunnel: { name:'トンネル', fn:(f, t) => {
+    for (let k = 0; k < 6; k++) {
+      const s = (k / 6 + t * 0.2) % 1, r = 0.08 + s * 0.9, rot = s * 2 + t * 0.3, pts = [];
+      for (let i = 0; i < 6; i++) pts.push([r * Math.cos(rot + i * TAU / 6), r * Math.sin(rot + i * TAU / 6)]);
+      f.poly(pts, true, 2);
+    }
+  }},
+  wave: { name:'ウェーブ', fn:(f, t) => {
+    f.curve(u => [-0.95 + 1.9 * u, 0.35 * Math.sin(u * 3 * TAU - t * 3)]);
+    f.curve(u => [0.95 - 1.9 * u, 0.35 * Math.sin((1 - u) * 3 * TAU - t * 3 + Math.PI)]);
+  }},
+  cube: { name:'3Dキューブ', fn:(f, t) => {
+    const s = 0.6, ay = t * 0.7, ax = t * 0.45;
+    const v = [[-s,-s,-s],[s,-s,-s],[s,-s,s],[-s,-s,s],[-s,s,-s],[s,s,-s],[s,s,s],[-s,s,s]].map(([x, y, z]) => {
+      let X = x * Math.cos(ay) + z * Math.sin(ay), Z = -x * Math.sin(ay) + z * Math.cos(ay);
+      let Y = y * Math.cos(ax) - Z * Math.sin(ax); Z = y * Math.sin(ax) + Z * Math.cos(ax);
+      const p = 2.4 / (Z + 3); return [X * p, Y * p];
+    });
+    f.poly([v[0], v[1], v[2], v[3]], true);
+    f.poly([v[4], v[5], v[6], v[7]], true);
+    for (let i = 0; i < 4; i++) f.poly([v[i], v[i + 4]], false);
+  }},
+  dots: { name:'ドット', fn:(f, t) => {
+    for (let i = 0; i < 8; i++) {
+      const a = i * TAU / 8 + t * 0.8, r = 0.7 + 0.1 * Math.sin(t * 3 + i);
+      f.moveTo(r * Math.cos(a), r * Math.sin(a)); f.dwell(20);
+    }
+  }},
+  spiro: { name:'スピログラフ', fn:(f, t) => {
+    const R = 5, r = 3, d = 3 + 1.5 * Math.sin(t * 0.5), k = 0.85 / (R - r + d), rot = t * 0.3;
+    f.curve(u => {
+      const a = u * 3 * TAU, x = (R - r) * Math.cos(a) + d * Math.cos((R - r) / r * a), y = (R - r) * Math.sin(a) - d * Math.sin((R - r) / r * a);
+      return [k * (x * Math.cos(rot) - y * Math.sin(rot)), k * (x * Math.sin(rot) + y * Math.cos(rot))];
+    });
+  }},
+};
+for (const [k, p] of Object.entries(PATTERNS)) $('pattern').add(new Option(p.name, k));
+$('pattern').value = S.pattern;
+
+function buildFrame(t) {
+  const f = new FrameBuilder(S.density);
+  PATTERNS[S.pattern].fn(f, t);
+  const pts = f.p.length ? f.p : [{ x:0, y:0, on:false, r:0, g:0, b:0 }];
+  // 全パターン共通の回転
+  const ang = (S.angle + S.rotSpeed * t) * Math.PI / 180;
+  if (ang) {
+    const c = Math.cos(ang), sn = Math.sin(ang);
+    for (const p of pts) [p.x, p.y] = [p.x * c - p.y * sn, p.x * sn + p.y * c];
+  }
+  // 位置（画面の高さの半分を1とした単位）
+  if (S.offX || S.offY) for (const p of pts) { p.x += S.offX / S.size; p.y += S.offY / S.size; }
+  const base = hex2rgb(S.color), n = pts.length;
+  pts.forEach((p, i) => {
+    if (!p.on) return;
+    const c = S.colorMode === 'rainbow' ? hsv((i / n + t * 0.1) % 1, 1, 1)
+            : S.colorMode === 'cycle'   ? hsv((t * 0.2) % 1, 1, 1) : base;
+    [p.r, p.g, p.b] = c;
+  });
+  return pts;
+}
+
+// ---------- スキャナのシミュレーション ----------
+// 点を1つずつpps間隔で出力し、ガルバノミラーは一次遅れで追従する
+const CAP = 1 << 16;
+const hx = new Float32Array(CAP), hy = new Float32Array(CAP), ht = new Float64Array(CAP);
+const hr = new Uint8Array(CAP), hg = new Uint8Array(CAP), hb = new Uint8Array(CAP), hon = new Uint8Array(CAP);
+let head = 0, count = 0, scanT = 0, animT = 0, frame = null, fi = 0, gx = 0, gy = 0, carry = 0, paused = false;
+
+function step(dt) {
+  carry += dt * S.timeScale * S.pps;
+  const n = Math.min(Math.floor(carry), 30000);
+  carry -= Math.floor(carry);
+  const dtp = 1 / S.pps, a = S.lag > 0 ? 1 - Math.exp(-dtp / (S.lag / 1000)) : 1;
+  for (let k = 0; k < n; k++) {
+    if (!frame || fi >= frame.length) { frame = buildFrame(animT); fi = 0; }
+    const p = frame[fi++];
+    gx += (p.x - gx) * a; gy += (p.y - gy) * a;
+    scanT += dtp; animT += dtp * S.animSpeed;
+    hx[head] = gx; hy[head] = gy; ht[head] = scanT;
+    hr[head] = p.r; hg[head] = p.g; hb[head] = p.b; hon[head] = p.on ? 1 : 0;
+    head = (head + 1) & (CAP - 1);
+    if (count < CAP) count++;
+  }
+}
+
+// ---------- 描画 ----------
+const idx = new Int32Array(CAP);
+function draw() {
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  const sc = H * 0.5 * S.size, cx = W / 2, cy = H / 2;
+  const X = i => cx + hx[i] * sc, Y = i => cy - hy[i] * sc;
+  const tau = S.persist / 1000, maxAge = tau * 5;
+
+  let L = 0; // 古い→新しい順に並べる
+  for (let j = 0; j < count; j++) { const i = (head - 1 - j + CAP) & (CAP - 1); if (scanT - ht[i] > maxAge) break; L++; }
+  for (let m = 0; m < L; m++) idx[m] = (head - L + m + CAP) & (CAP - 1);
+
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+  if (S.showBlank) {
+    ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(120,120,120,.5)'; ctx.beginPath();
+    for (let m = 1; m < L; m++) { const i = idx[m], j = idx[m - 1]; if (!hon[i]) { ctx.moveTo(X(j), Y(j)); ctx.lineTo(X(i), Y(i)); } }
+    ctx.stroke();
+  }
+
+  const passes = [
+    { w: S.beam * 7, a: 0.10 * S.glow, white: 0 },   // グロー
+    { w: S.beam,     a: 1,             white: 0 },   // ビーム
+    { w: S.beam * 0.45, a: 0.6,        white: 0.6 }, // 白飛びコア
+  ];
+  for (const ps of passes) {
+    if (ps.a <= 0) continue;
+    ctx.lineWidth = ps.w;
+    let key = -1;
+    ctx.beginPath();
+    for (let m = 1; m < L; m++) {
+      const i = idx[m], j = idx[m - 1];
+      const al = hon[i] ? Math.exp(-(scanT - ht[i]) / tau) * S.bright * ps.a : 0;
+      const aq = Math.min(24, Math.round(al * 24));
+      if (aq === 0) { if (key !== -1) { ctx.stroke(); ctx.beginPath(); key = -1; } continue; }
+      const k = ((hr[i] << 16 | hg[i] << 8 | hb[i]) * 32) + aq;
+      if (k !== key) {
+        if (key !== -1) ctx.stroke();
+        const wv = ps.white, r = hr[i] + (255 - hr[i]) * wv, g = hg[i] + (255 - hg[i]) * wv, b = hb[i] + (255 - hb[i]) * wv;
+        ctx.strokeStyle = `rgba(${r | 0},${g | 0},${b | 0},${aq / 24})`;
+        ctx.beginPath(); ctx.moveTo(X(j), Y(j)); key = k;
+      }
+      ctx.lineTo(X(i), Y(i));
+    }
+    if (key !== -1) ctx.stroke();
+  }
+
+  if (S.head && count) {
+    const i = (head - 1 + CAP) & (CAP - 1);
+    if (hon[i]) {
+      const r = S.beam * 6, g = ctx.createRadialGradient(X(i), Y(i), 0, X(i), Y(i), r);
+      g.addColorStop(0, 'rgba(255,255,255,1)');
+      g.addColorStop(0.3, `rgba(${hr[i]},${hg[i]},${hb[i]},.9)`);
+      g.addColorStop(1, `rgba(${hr[i]},${hg[i]},${hb[i]},0)`);
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(X(i), Y(i), r, 0, TAU); ctx.fill();
+    }
+  }
+}
+
+// ---------- ループ ----------
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (!paused) step(dt);
+  draw();
+  if (frame) $('hud').textContent = `${frame.length} pts/frame · ${(S.pps / frame.length).toFixed(1)} fps相当 · ×${S.timeScale.toPrecision(2)}${paused ? ' · 停止中' : ''}`;
+  requestAnimationFrame(loop);
+}
+
+// ---------- UI ----------
+$('pattern').onchange = e => { S.pattern = e.target.value; frame = null; };
+$('colorMode').onchange = e => { S.colorMode = e.target.value; };
+$('color').oninput = e => { S.color = e.target.value; };
+$('head').onchange = e => { S.head = e.target.checked; };
+$('showBlank').onchange = e => { S.showBlank = e.target.checked; };
+
+const PRESETS = {
+  real:    { timeScale:1,     persist:35,  pps:30000, head:false, showBlank:false },
+  trail:   { timeScale:0.02,  persist:8,   head:true,  showBlank:false },
+  slow:    { timeScale:0.002, persist:1.5, head:true,  showBlank:true },
+  flicker: { timeScale:1,     persist:12,  pps:6000,  head:false, showBlank:false },
+};
+document.querySelectorAll('[data-preset]').forEach(b => b.onclick = () => {
+  for (const [k, v] of Object.entries(PRESETS[b.dataset.preset])) setSetting(k, v);
+});
+
+function togglePause() { paused = !paused; $('pause').textContent = paused ? '再開' : '一時停止'; }
+$('pause').onclick = togglePause;
+function toggleUI() { $('panel').classList.toggle('hidden'); $('hud').classList.toggle('hidden'); }
+addEventListener('keydown', e => {
+  if (['INPUT', 'SELECT', 'BUTTON'].includes(e.target.tagName)) return;
+  if (e.key === 'h' || e.key === 'H') toggleUI();
+  if (e.key === ' ') { e.preventDefault(); togglePause(); }
+});
+
+// 設定をURLに書き出し（OBSのブラウザソースに貼る用）
+$('copyUrl').onclick = async () => {
+  const q = new URLSearchParams({ obs:'1', pattern:S.pattern, colorMode:S.colorMode, color:S.color, head:S.head ? '1' : '0', showBlank:S.showBlank ? '1' : '0' });
+  for (const c of SLIDERS) q.set(c.id, +S[c.id].toPrecision(5));
+  const url = location.href.split('?')[0] + '?' + q;
+  try { await navigator.clipboard.writeText(url); $('copyUrl').textContent = 'コピーしました'; }
+  catch { prompt('このURLをコピー', url); }
+  setTimeout(() => $('copyUrl').textContent = 'OBS用URLをコピー', 1500);
+};
+
+// ---------- 設定の読み込み（ローカル保存 → URL → サーバーの順に上書き） ----------
+const params = new URLSearchParams(location.search);
+const isOBS = params.get('obs') === '1';
+const CH = params.get('ch') || 'default';
+const API = '/api/state?ch=' + encodeURIComponent(CH);
+const LS_KEY = 'ildaLaserSim:' + CH + (isOBS ? ':obs' : '');
+const canSync = location.protocol.startsWith('http');
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+function getState() {
+  const st = { pattern:S.pattern, colorMode:S.colorMode, color:S.color, head:S.head, showBlank:S.showBlank, paused };
+  for (const c of SLIDERS) st[c.id] = S[c.id];
+  return st;
+}
+function applyState(st) {
+  for (const [k, v] of Object.entries(st)) if (k !== 'paused') setSetting(k, v);
+  if (typeof st.paused === 'boolean' && st.paused !== paused) togglePause();
+}
+
+// リロードしても値・アニメーションの位置・UIの表示状態を引き継ぐ
+function saveLocal() {
+  try { localStorage.setItem(LS_KEY, JSON.stringify({ state:getState(), animT, uiHidden:$('panel').classList.contains('hidden') })); } catch {}
+}
+let saved = null;
+try { saved = JSON.parse(localStorage.getItem(LS_KEY)); } catch {}
+if (saved?.state) applyState(saved.state);
+if (Number.isFinite(saved?.animT)) animT = saved.animT;
+for (const [k, v] of params) if (k !== 'obs' && k !== 'ch') setSetting(k, v);
+if (isOBS || saved?.uiHidden) toggleUI();
+setInterval(saveLocal, 500);
+addEventListener('pagehide', saveLocal);
+
+// ---------- サーバー経由の同期（操作画面 → OBS画面） ----------
+let syncV = -1, pushTimer = 0, lastLocal = -Infinity;
+function pushState() {
+  if (!canSync || isOBS) return;
+  lastLocal = performance.now();
+  if (pushTimer) return; // ドラッグ中も約60回/秒で送る
+  pushTimer = setTimeout(() => {
+    pushTimer = 0;
+    fetch(API, { method:'POST', body:JSON.stringify(getState()) })
+      .then(r => r.json()).then(r => { syncV = r.v; }).catch(() => {});
+  }, 16);
+}
+for (const ev of ['input', 'change', 'click']) $('panel').addEventListener(ev, pushState);
+addEventListener('keydown', e => { if (e.key === ' ' && !['INPUT', 'SELECT', 'BUTTON'].includes(e.target.tagName)) pushState(); });
+
+if (canSync) {
+  // サーバーからの変更をリアルタイムで受け取る（切断されても自動で再接続）
+  let first = true;
+  const es = new EventSource('/api/events?ch=' + encodeURIComponent(CH));
+  es.onmessage = e => {
+    const r = JSON.parse(e.data);
+    if (first) { first = false; if (!r.data && !isOBS) { pushState(); return; } }
+    if (!isOBS && performance.now() - lastLocal < 500) return; // 操作中は自分の変更を優先
+    if (r.v !== syncV) { syncV = r.v; if (r.data) applyState(r.data); }
+  };
+
+  // HMR: ファイルが更新されたら自動でリロード（録画中は待つ）
+  let hmrV = null;
+  setInterval(async () => {
+    try {
+      const { v } = await (await fetch('/api/hmr', { cache:'no-store' })).json();
+      if (hmrV === null) hmrV = v;
+      else if (v !== hmrV && !rec) { saveLocal(); location.reload(); }
+    } catch {}
+  }, 1000);
+}
+
+// ---------- マウス操作 ----------
+let drag = null;
+const toCanvas = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * W, (e.clientY - r.top) / r.height * H]; };
+const setAngle = a => setSetting('angle', ((a % 360) + 360) % 360);
+cv.addEventListener('pointerdown', e => {
+  if (e.button !== 0) return;
+  cv.setPointerCapture(e.pointerId);
+  drag = { p:toCanvas(e), rot:e.shiftKey };
+  cv.style.cursor = 'grabbing';
+});
+cv.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const [x, y] = toCanvas(e), [px, py] = drag.p;
+  drag.p = [x, y];
+  if (drag.rot) setAngle(S.angle + (x - px) * 0.3);
+  else {
+    setSetting('offX', clamp(S.offX + (x - px) / (H / 2), -1.78, 1.78));
+    setSetting('offY', clamp(S.offY - (y - py) / (H / 2), -1, 1));
+  }
+  pushState();
+});
+const endDrag = () => { drag = null; cv.style.cursor = ''; };
+cv.addEventListener('pointerup', endDrag);
+cv.addEventListener('pointercancel', endDrag);
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  const d = e.deltaY || e.deltaX; // MacはShift+ホイールがdeltaXになる
+  if (e.shiftKey) setAngle(S.angle + d * 0.1);
+  else setSetting('size', clamp(S.size * Math.exp(-d * 0.0015), 0.05, 1.5));
+  pushState();
+}, { passive:false });
+cv.addEventListener('dblclick', () => { setSetting('offX', 0); setSetting('offY', 0); pushState(); });
+
+// ---------- 動画書き出し ----------
+let rec = null, recT0 = 0, recTimer = 0;
+const MIME = ['video/mp4;codecs=avc1.640028', 'video/mp4;codecs=avc1', 'video/mp4',
+              'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+function startRec() {
+  const mime = window.MediaRecorder && MIME.find(t => MediaRecorder.isTypeSupported(t));
+  if (!mime) { $('recInfo').textContent = 'このブラウザは録画に対応していません（Chrome推奨）'; return; }
+  const stream = cv.captureStream(60), chunks = [];
+  const r = new MediaRecorder(stream, { mimeType:mime, videoBitsPerSecond:40e6 });
+  r.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+  r.onstop = () => {
+    stream.getTracks().forEach(t => t.stop());
+    const ext = mime.includes('mp4') ? 'mp4' : 'webm';
+    const d = new Date(), pad = n => String(n).padStart(2, '0');
+    const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(chunks, { type:mime.split(';')[0] }));
+    a.download = `laser_${S.pattern}_${stamp}.${ext}`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    $('recInfo').textContent = `保存しました: ${a.download}`;
+    rec = null; $('rec').textContent = '● 録画開始';
+  };
+  r.start(500);
+  rec = r; recT0 = performance.now();
+  const dur = +$('recDur').value;
+  if (dur) recTimer = setTimeout(stopRec, dur * 1000);
+  $('rec').textContent = '■ 録画停止';
+}
+function stopRec() { clearTimeout(recTimer); if (rec && rec.state !== 'inactive') rec.stop(); }
+$('rec').onclick = () => rec ? stopRec() : startRec();
+setInterval(() => {
+  if (!rec) return;
+  const t = (performance.now() - recT0) / 1000, dur = +$('recDur').value;
+  $('recInfo').textContent = `録画中 ${t.toFixed(1)}s${dur ? ' / ' + dur + 's' : ''}（タブを切り替えずにお待ちください）`;
+}, 100);
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
