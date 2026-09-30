@@ -161,3 +161,33 @@ button, input, select { font: inherit; color: inherit; }
 }
 #status .ok { color: #6bb36b; }
 #status .ng { color: var(--rec); }
+
+/* 細長いウィンドウ（Unityと並べるときやスマホ）は縦1列にして、ビューアを上に貼り付ける */
+@media (max-width: 900px) {
+  /* bodyまでスクロール可能にすると、stickyの基準がbodyになって効かなくなる */
+  html { height: auto; overflow: auto; }
+  body { height: auto; overflow: visible; }
+  /* グリッドの中だとstickyがマスの中でしか効かないので縦並びにする */
+  #app { display: flex; flex-direction: column; height: auto; min-height: 100vh; }
+  #toolbar { flex-wrap: wrap; padding: 4px 8px; row-gap: 4px; }
+  #toolbar .grow { flex-basis: 100%; height: 0; }
+  #viewer { flex: 0 0 42vh; position: sticky; top: 0; z-index: 1; }
+  #patterns { order: 1; }
+  #inspector { order: 2; }
+  #status { order: 3; min-height: 22px; }
+  #inspector, #patterns { overflow: visible; }
+}
+
+/* タッチ操作 */
+#preview { touch-action: none; }
+.row > label.scrub { touch-action: pan-y; }
+
+@media (pointer: coarse) {
+  .tb { height: 32px; padding: 0 12px; }
+  .row { min-height: 36px; }
+  .field, .row select, .row input[type=color] { height: 30px; }
+  /* iOSは16px未満の入力欄にフォーカスすると拡大してしまう */
+  .field input, .row select, #toolbar select.tb { font-size: 16px; }
+  .clip { height: 40px; width: calc((100% - 8px) / 3); }
+  .presets .tb { height: 30px; }
+}
