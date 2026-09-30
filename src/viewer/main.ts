@@ -32,11 +32,12 @@ interface ViewerSettings {
   bloom: number;
   smoke: number;
   grain: number;
+  extinction: number;
   target: TargetKind;
 }
 const RIG_KEY = 'laser:viewer';
 const vs: ViewerSettings = {
-  angle: 40, haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, target: 'wall',
+  angle: 40, haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, extinction: 0.3, target: 'wall',
   ...loadLocal<ViewerSettings>(RIG_KEY),
 };
 const rig: Rig = { halfAngle: 0, distance: 0, haze: 0 };
@@ -85,8 +86,10 @@ placeWall();
 
 const beams = new Beams(rig, surfaces);
 const applySmoke = () => {
-  beams.smoke.uSmoke.value = vs.smoke;
-  beams.smoke.uGrain.value = vs.grain;
+  beams.haze.uSmoke.value = vs.smoke;
+  beams.haze.uGrain.value = vs.grain;
+  // 1で100mあたり約5の減衰（45m先で約1/10）
+  beams.haze.uExt.value = vs.extinction * 0.05;
 };
 applySmoke();
 scene.add(beams.group);
@@ -115,7 +118,7 @@ startLoop(dt => {
   const s = store.get();
   if (s.mode === 'scan') beams.fromScanner(sim.scanner, s, sim.exposureTime());
   else beams.fromFrame(sim.currentFrame(), s);
-  beams.smoke.uTime.value = performance.now() / 1000;
+  beams.haze.uTime.value = performance.now() / 1000;
   controls.update();
   composer.render();
 });
@@ -129,6 +132,7 @@ function buildRigPanel() {
     ['bloom', 'ブルーム', 0, 3, 0.05],
     ['smoke', 'スモーク', 0, 1, 0.05],
     ['grain', 'スモークの粒', 0.2, 2, 0.05],
+    ['extinction', 'ヘイズの減衰', 0, 1, 0.05],
   ];
   panel.innerHTML = '<h3>3D</h3>';
   const targetRow = document.createElement('label');

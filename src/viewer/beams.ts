@@ -16,8 +16,6 @@ export interface Rig {
   haze: number;
 }
 
-// 光源から遠いほど暗くする（光の膜が広がって薄くなるのと、ヘイズでの減衰）
-const FAR_FADE = 0.25;
 
 class Buffer {
   pos: Float32Array;
@@ -68,6 +66,22 @@ const SMOKE_GLSL = `
   uniform float uTime;
   uniform float uSmoke;
   uniform float uGrain;
+  uniform float uExt;
+  // ビームの見え方の物理:
+  // ・ヘイズで散乱した分だけビームは減っていく（ベール・ランベルト則）
+  // ・ヘイズの粒は光を前向きに散乱しやすいので、光源の方を向いて見るほど明るい（ヘニエイ・グリーンスタイン）
+  float airlight(vec3 w, vec3 viewDir) {
+    float r = length(w);
+    vec3 beamDir = w / max(r, 1e-4);
+    float c = dot(beamDir, -viewDir);
+    const float g = 0.4;
+    float phase = pow((1.0 + g * g) / (1.0 + g * g - 2.0 * g * c), 1.5);
+    return exp(-uExt * r) * phase;
+  }
+  // 光の膜は遠いほど広がって薄くなる（距離に反比例。4mで1）
+  float spread(vec3 w) {
+    return min(3.0, 4.0 / max(length(w), 0.1));
+  }
   float hash(vec3 p) {
     p = fract(p * 0.3183099 + 0.1);
     p *= 17.0;
@@ -105,10 +119,12 @@ const SMOKE_GLSL = `
   }
 `;
 
-export interface SmokeUniforms {
+export interface HazeUniforms {
   uTime: { value: number };
   uSmoke: { value: number };
   uGrain: { value: number };
+  // ヘイズの減衰係数（1mあたり）
+  uExt: { value: number };
 }
 
 const beamVertex = `
@@ -126,7 +142,7 @@ const beamVertex = `
   }`;
 
 // 光の膜は、斜めから見るほどヘイズの中を長く通して見るので明るく見える（円錐の縁が明るいのはこのため）
-const sheetMaterial = (uniforms: SmokeUniforms) => new ShaderMaterial({
+const sheetMaterial = (uniforms: HazeUniforms) => new ShaderMaterial({
   ...additive,
   side: DoubleSide,
   uniforms: { ...uniforms },
@@ -139,11 +155,12 @@ const sheetMaterial = (uniforms: SmokeUniforms) => new ShaderMaterial({
     void main() {
       vec3 n = normalize(cross(dFdx(vView), dFdy(vView)));
       float c = abs(dot(n, normalize(-vView)));
-      gl_FragColor = vec4(vColor / max(c, 0.12) * smoke(vWorld, normalize(vEye)), 1.0);
+      vec3 viewDir = normalize(vEye);
+      gl_FragColor = vec4(vColor / max(c, 0.12) * smoke(vWorld, viewDir) * airlight(vWorld, viewDir) * spread(vWorld), 1.0);
     }`,
 });
 
-const rayMaterial = (uniforms: SmokeUniforms) => new ShaderMaterial({
+const rayMaterial = (uniforms: HazeUniforms) => new ShaderMaterial({
   ...additive,
   uniforms: { ...uniforms },
   vertexShader: beamVertex,
@@ -152,7 +169,8 @@ const rayMaterial = (uniforms: SmokeUniforms) => new ShaderMaterial({
     varying vec3 vWorld;
     varying vec3 vEye;
     void main() {
-      gl_FragColor = vec4(vColor * smoke(vWorld, normalize(vEye)), 1.0);
+      vec3 viewDir = normalize(vEye);
+      gl_FragColor = vec4(vColor * smoke(vWorld, viewDir) * airlight(vWorld, viewDir), 1.0);
     }`,
 });
 
@@ -167,14 +185,14 @@ export class Beams {
   private scale = 1;
 
   private surfaces: Surfaces;
-  readonly smoke: SmokeUniforms = { uTime: { value: 0 }, uSmoke: { value: 0.6 }, uGrain: { value: 0.6 } };
+  readonly haze: HazeUniforms = { uTime: { value: 0 }, uSmoke: { value: 0.6 }, uGrain: { value: 0.6 }, uExt: { value: 0.015 } };
 
   constructor(rig: Rig, surfaces: Surfaces) {
     this.rig = rig;
     this.surfaces = surfaces;
     this.group.add(
-      new Mesh(this.sheets.geo, sheetMaterial(this.smoke)),
-      new LineSegments(this.rays.geo, rayMaterial(this.smoke)),
+      new Mesh(this.sheets.geo, sheetMaterial(this.haze)),
+      new LineSegments(this.rays.geo, rayMaterial(this.haze)),
       new LineSegments(this.wall.geo, new LineBasicMaterial(additive)),
     );
     for (const o of this.group.children) o.frustumCulled = false;
@@ -193,11 +211,6 @@ export class Beams {
     return t;
   }
 
-  // 光源からの距離による減衰
-  private fade(p: number[]) {
-    return 1 - (1 - FAR_FADE) * Math.min(1, -p[2] / this.rig.distance);
-  }
-
   // 2本のビームが別々の物に当たっている（奥行きが飛んでいる）か
   private split(ta: number, tb: number) {
     if (!Number.isFinite(ta) || !Number.isFinite(tb)) return Number.isFinite(ta) !== Number.isFinite(tb);
@@ -212,19 +225,19 @@ export class Beams {
     const ta = this.hit(x0, y0, this.a), tb = this.hit(x1, y1, this.b);
     // 物の縁をまたぐ膜は、手前の物を突き抜けた形になってしまうので描かない
     if (this.split(ta, tb)) return;
-    const fa = k * this.fade(this.a), fb = k * this.fade(this.b), s = this.sheets;
+    const s = this.sheets;
     s.vert(0, 0, 0, 0, r * k, g * k, b * k);
-    s.vert(1, this.a[0], this.a[1], this.a[2], r * fa, g * fa, b * fa);
-    s.vert(2, this.b[0], this.b[1], this.b[2], r * fb, g * fb, b * fb);
+    s.vert(1, this.a[0], this.a[1], this.a[2], r * k, g * k, b * k);
+    s.vert(2, this.b[0], this.b[1], this.b[2], r * k, g * k, b * k);
     s.count++;
   }
 
   private ray(x: number, y: number, r: number, g: number, b: number, k: number) {
     if (this.rays.full()) return;
     this.hit(x, y, this.a);
-    const f = k * this.fade(this.a), s = this.rays;
+    const s = this.rays;
     s.vert(0, 0, 0, 0, r * k, g * k, b * k);
-    s.vert(1, this.a[0], this.a[1], this.a[2], r * f, g * f, b * f);
+    s.vert(1, this.a[0], this.a[1], this.a[2], r * k, g * k, b * k);
     s.count++;
   }
 
@@ -235,6 +248,7 @@ export class Beams {
     if (!Number.isFinite(ta) || !Number.isFinite(tb) || this.split(ta, tb)) return;
     // 面から少しだけ手前に出して、面と重ならないようにする
     const s = this.wall, pull = 0.998;
+    k *= Math.exp(-this.haze.uExt.value * (ta + tb) / 2);
     s.vert(0, this.a[0] * pull, this.a[1] * pull, this.a[2] * pull, r * k, g * k, b * k);
     s.vert(1, this.b[0] * pull, this.b[1] * pull, this.b[2] * pull, r * k, g * k, b * k);
     s.count++;
