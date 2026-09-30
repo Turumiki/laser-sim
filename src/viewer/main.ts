@@ -258,6 +258,8 @@ const cookies = new Cookies();
 const VIDEO_GAIN = 14;
 // 積算の細かさ（視線に沿って何回調べるか）
 const STEPS: Record<Quality, number> = { high: 96, mid: 48, low: 24 };
+// 空間の光を計算する解像度（画面に対する割合）。光の筋はもともとぼやけているので、下げても見た目はほとんど変わらない
+const VOLUME_SCALE: Record<Quality, number> = { high: 0.5, mid: 0.35, low: 0.25 };
 let bloom: UnrealBloomPass;
 // 画質を変えたら、解像度とアンチエイリアスに合わせて作り直す
 // ブルームは画面全体を何段もぼかすので重い。Lowや強さ0のときは処理ごと止める
@@ -279,6 +281,7 @@ const buildComposer = () => {
   composer = new EffectComposer(renderer, target);
   composer.addPass(new RenderPass(scene, camera));
   volume = new VolumePass(camera, beams.haze);
+  volume.scale = VOLUME_SCALE[vs.quality] ?? 0.35;
   composer.addPass(volume);
   cookies.size = vs.quality === 'low' ? 256 : 512;
   // しきい値を高めにして、ビームの芯のように明るい所だけをにじませる（ヘイズ全体がかすまないように）
