@@ -321,16 +321,53 @@ export class Beams {
     }
     this.tb = this.hit(x1, y1, this.b);
     this.cached = next;
+    this.p0[0] = x0; this.p0[1] = y0; this.p1[0] = x1; this.p1[1] = y1;
+    this.edged = false;
+  }
+
+  // 両端が別々の物に当たっているとき、境目の手前（ea）と向こう（eb）の当たる位置。
+  // 線分を二分探索して縁を探す。見つからなければ false
+  private p0 = [0, 0];
+  private p1 = [0, 0];
+  private ea = [0, 0, 0];
+  private eb = [0, 0, 0];
+  private tmp = [0, 0, 0];
+  private edged = false;
+  private edgeOk = false;
+  private edge() {
+    if (this.edged) return this.edgeOk;
+    this.edged = true;
+    let lo = 0, hi = 1, tLo = this.ta, tHi = this.tb;
+    const ea = this.ea, eb = this.eb;
+    ea.splice(0, 3, ...this.a);
+    eb.splice(0, 3, ...this.b);
+    for (let i = 0; i < 8; i++) {
+      const m = (lo + hi) / 2;
+      const t = this.hit(this.p0[0] + (this.p1[0] - this.p0[0]) * m, this.p0[1] + (this.p1[1] - this.p0[1]) * m, this.tmp);
+      if (!this.split(tLo, t)) { lo = m; tLo = t; ea.splice(0, 3, ...this.tmp); }
+      else { hi = m; tHi = t; eb.splice(0, 3, ...this.tmp); }
+    }
+    // 縁の両側がそれぞれつながっていれば、そこで分けて描ける
+    this.edgeOk = !this.split(tHi, this.tb) || hi === 1;
+    return this.edgeOk;
+  }
+
+  private tri(p: number[], q: number[], r: number, g: number, b: number) {
+    if (this.sheets.full()) return;
+    const s = this.sheets, o = this.proj.pos;
+    s.vert(0, o[0], o[1], o[2], r, g, b);
+    s.vert(1, p[0], p[1], p[2], r, g, b);
+    s.vert(2, q[0], q[1], q[2], r, g, b);
+    s.count++;
   }
 
   private sheet(r: number, g: number, b: number, k: number) {
-    // 物の縁をまたぐ膜は、手前の物を突き抜けた形になってしまうので描かない
-    if (this.sheets.full() || this.split(this.ta, this.tb)) return;
-    const s = this.sheets, o = this.proj.pos;
-    s.vert(0, o[0], o[1], o[2], r * k, g * k, b * k);
-    s.vert(1, this.a[0], this.a[1], this.a[2], r * k, g * k, b * k);
-    s.vert(2, this.b[0], this.b[1], this.b[2], r * k, g * k, b * k);
-    s.count++;
+    r *= k; g *= k; b *= k;
+    if (!this.split(this.ta, this.tb)) { this.tri(this.a, this.b, r, g, b); return; }
+    // 物の縁をまたぐ膜は、そのまま張ると手前の物を突き抜けるので、縁で2枚に分ける
+    if (!this.edge()) return;
+    this.tri(this.a, this.ea, r, g, b);
+    this.tri(this.eb, this.b, r, g, b);
   }
 
   private ray(r: number, g: number, b: number, k: number) {
@@ -344,13 +381,22 @@ export class Beams {
   // 物に当たった所の光。当たっていなければ描かない
   private spot(r: number, g: number, b: number, k: number) {
     const ta = this.ta, tb = this.tb;
-    if (this.wall.full() || !Number.isFinite(ta) || !Number.isFinite(tb) || this.split(ta, tb)) return;
+    if (!Number.isFinite(ta) && !Number.isFinite(tb)) return;
+    k *= Math.exp(-this.haze.uExt.value * ((Number.isFinite(ta) ? ta : tb) + (Number.isFinite(tb) ? tb : ta)) / 2);
+    if (!this.split(ta, tb)) { this.line(this.a, this.b, r * k, g * k, b * k); return; }
+    // 縁をまたぐときは、縁の両側で別々に引く（何にも当たらない側は引かない）
+    if (!this.edge()) return;
+    if (Number.isFinite(ta)) this.line(this.a, this.ea, r * k, g * k, b * k);
+    if (Number.isFinite(tb)) this.line(this.eb, this.b, r * k, g * k, b * k);
+  }
+
+  private line(p: number[], q: number[], r: number, g: number, b: number) {
+    if (this.wall.full()) return;
     // 面から少しだけ手前に出して、面と重ならないようにする
     const s = this.wall, o = this.proj.pos, pull = 0.998;
-    k *= Math.exp(-this.haze.uExt.value * (ta + tb) / 2);
-    const P = (p: number[], i: number) => o[i] + (p[i] - o[i]) * pull;
-    s.vert(0, P(this.a, 0), P(this.a, 1), P(this.a, 2), r * k, g * k, b * k);
-    s.vert(1, P(this.b, 0), P(this.b, 1), P(this.b, 2), r * k, g * k, b * k);
+    const P = (v: number[], i: number) => o[i] + (v[i] - o[i]) * pull;
+    s.vert(0, P(p, 0), P(p, 1), P(p, 2), r, g, b);
+    s.vert(1, P(q, 0), P(q, 1), P(q, 2), r, g, b);
     s.count++;
   }
 
