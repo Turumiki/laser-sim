@@ -1,6 +1,6 @@
 import {
-  ACESFilmicToneMapping, BoxGeometry, Color, GridHelper, Mesh, MeshBasicMaterial, PerspectiveCamera, Scene, Vector2,
-  WebGLRenderer,
+  ACESFilmicToneMapping, BoxGeometry, Color, GridHelper, HalfFloatType, Mesh, MeshBasicMaterial, PerspectiveCamera,
+  Scene, Vector2, WebGLRenderer, WebGLRenderTarget,
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -25,7 +25,15 @@ const sync = connectSync(store, { channel, role: 'output' });
 const sim = new Simulation(store);
 
 // ビューア独自の設定（同期しない）
+type Quality = 'high' | 'mid' | 'low';
+const QUALITY: Record<Quality, { label: string; pixelRatio: () => number; samples: number; thick: number }> = {
+  high: { label: 'High', pixelRatio: () => Math.min(devicePixelRatio, 2), samples: 4, thick: 1 },
+  mid: { label: 'Mid', pixelRatio: () => 1, samples: 0, thick: 1 },
+  low: { label: 'Low', pixelRatio: () => 0.5, samples: 0, thick: 0 },
+};
+
 interface ViewerSettings {
+  quality: Quality;
   angle: number;
   haze: number;
   distance: number;
@@ -37,7 +45,7 @@ interface ViewerSettings {
 }
 const RIG_KEY = 'laser:viewer';
 const vs: ViewerSettings = {
-  angle: 40, haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, extinction: 0.3, target: 'wall',
+  quality: 'mid', angle: 40, haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, extinction: 0.3, target: 'wall',
   ...loadLocal<ViewerSettings>(RIG_KEY),
 };
 const rig: Rig = { halfAngle: 0, distance: 0, haze: 0 };
@@ -48,9 +56,8 @@ const applyRig = () => {
 };
 applyRig();
 
-// Retinaで2倍の解像度にするとブルームまで含めて重くなるので等倍で描く（にじみでギザギザは目立たない）
+// アンチエイリアスは画質設定に合わせて、ポストエフェクト用のバッファ側でかける
 const renderer = new WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
-renderer.setPixelRatio(1);
 renderer.toneMapping = ACESFilmicToneMapping;
 document.body.prepend(renderer.domElement);
 
@@ -94,11 +101,22 @@ const applySmoke = () => {
 applySmoke();
 scene.add(beams.group);
 
-const composer = new EffectComposer(renderer);
-composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new Vector2(1, 1), vs.bloom, 0.5, 0.05);
-composer.addPass(bloom);
-composer.addPass(new OutputPass());
+let composer: EffectComposer;
+let bloom: UnrealBloomPass;
+// 画質を変えたら、解像度とアンチエイリアスに合わせて作り直す
+const buildComposer = () => {
+  const q = QUALITY[vs.quality] ?? QUALITY.mid;
+  composer?.dispose();
+  renderer.setPixelRatio(q.pixelRatio());
+  const target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: q.samples });
+  composer = new EffectComposer(renderer, target);
+  composer.addPass(new RenderPass(scene, camera));
+  bloom = new UnrealBloomPass(new Vector2(1, 1), vs.bloom, 0.5, 0.05);
+  composer.addPass(bloom);
+  composer.addPass(new OutputPass());
+  beams.haze.uThick.value = q.thick;
+  resize();
+};
 
 const resize = () => {
   const w = innerWidth, h = innerHeight;
@@ -108,7 +126,7 @@ const resize = () => {
   camera.updateProjectionMatrix();
 };
 addEventListener('resize', resize);
-resize();
+buildComposer();
 
 buildRigPanel();
 
@@ -125,7 +143,7 @@ startLoop(dt => {
 
 function buildRigPanel() {
   const panel = document.getElementById('rig')!;
-  const rows: [Exclude<keyof ViewerSettings, 'target'>, string, number, number, number][] = [
+  const rows: [Exclude<keyof ViewerSettings, 'target' | 'quality'>, string, number, number, number][] = [
     ['angle', '走査角', 10, 80, 1],
     ['haze', 'ヘイズ', 0.1, 5, 0.05],
     ['distance', '壁までの距離', 2, 150, 0.5],
@@ -135,6 +153,18 @@ function buildRigPanel() {
     ['extinction', 'ヘイズの減衰', 0, 1, 0.05],
   ];
   panel.innerHTML = '<h3>3D</h3>';
+  const qualityRow = document.createElement('label');
+  const quality = document.createElement('select');
+  for (const [id, q] of Object.entries(QUALITY)) quality.add(new Option(q.label, id));
+  quality.value = vs.quality;
+  quality.addEventListener('change', () => {
+    vs.quality = quality.value as Quality;
+    buildComposer();
+    saveLocal(RIG_KEY, vs);
+  });
+  qualityRow.title = 'High: 高解像度とアンチエイリアス。Low: 半分の解像度で軽くする';
+  qualityRow.append('画質', quality);
+  panel.append(qualityRow);
   const targetRow = document.createElement('label');
   const select = document.createElement('select');
   for (const t of TARGETS) select.add(new Option(t.label, t.id));

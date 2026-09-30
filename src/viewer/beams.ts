@@ -67,6 +67,8 @@ const SMOKE_GLSL = `
   uniform float uSmoke;
   uniform float uGrain;
   uniform float uExt;
+  // 1: 膜の厚みの中を3か所測る / 0: 1か所だけ（軽い）
+  uniform float uThick;
   // ビームの見え方の物理:
   // ・ヘイズで散乱した分だけビームは減っていく（ベール・ランベルト則）
   // ・ヘイズの粒は光を前向きに散乱しやすいので、光源の方を向いて見るほど明るい（ヘニエイ・グリーンスタイン）
@@ -114,7 +116,9 @@ const SMOKE_GLSL = `
   // 光の膜には厚みがある（遠いほどビームが広がって厚い）。視線に沿って厚みの中を数か所測って平均する
   float smoke(vec3 w, vec3 viewDir) {
     float thick = 0.03 + 0.05 * length(w);
-    float d = (smoke1(w - viewDir * thick) + smoke1(w) + smoke1(w + viewDir * thick)) / 3.0;
+    float d = uThick > 0.5
+      ? (smoke1(w - viewDir * thick) + smoke1(w) + smoke1(w + viewDir * thick)) / 3.0
+      : smoke1(w);
     return mix(1.0, d * 1.7, uSmoke);
   }
 `;
@@ -125,6 +129,7 @@ export interface HazeUniforms {
   uGrain: { value: number };
   // ヘイズの減衰係数（1mあたり）
   uExt: { value: number };
+  uThick: { value: number };
 }
 
 const beamVertex = `
@@ -185,7 +190,7 @@ export class Beams {
   private scale = 1;
 
   private surfaces: Surfaces;
-  readonly haze: HazeUniforms = { uTime: { value: 0 }, uSmoke: { value: 0.6 }, uGrain: { value: 0.6 }, uExt: { value: 0.015 } };
+  readonly haze: HazeUniforms = { uTime: { value: 0 }, uSmoke: { value: 0.6 }, uGrain: { value: 0.6 }, uExt: { value: 0.015 }, uThick: { value: 1 } };
 
   constructor(rig: Rig, surfaces: Surfaces) {
     this.rig = rig;
