@@ -35,8 +35,9 @@ const applyRig = () => {
 };
 applyRig();
 
-const renderer = new WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+// Retinaで2倍の解像度にするとブルームまで含めて重くなるので等倍で描く（にじみでギザギザは目立たない）
+const renderer = new WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
+renderer.setPixelRatio(1);
 renderer.toneMapping = ACESFilmicToneMapping;
 document.body.prepend(renderer.domElement);
 

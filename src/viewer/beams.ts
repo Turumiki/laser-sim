@@ -47,11 +47,15 @@ class Buffer {
     this.col[o] = r; this.col[o + 1] = g; this.col[o + 2] = b;
   }
 
+  // 使った分だけGPUに送る（バッファ全体を毎フレーム送ると重い）
   commit() {
-    this.geo.setDrawRange(0, this.count * this.per);
-    this.posAttr.needsUpdate = true;
-    this.colAttr.needsUpdate = true;
-    this.geo.computeBoundingSphere();
+    const n = this.count * this.per;
+    this.geo.setDrawRange(0, n);
+    for (const attr of [this.posAttr, this.colAttr]) {
+      attr.clearUpdateRanges();
+      attr.addUpdateRange(0, n * 3);
+      attr.needsUpdate = true;
+    }
   }
 }
 
