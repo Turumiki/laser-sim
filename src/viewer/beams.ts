@@ -91,7 +91,7 @@ const additive = { vertexColors: true, transparent: true, blending: AdditiveBlen
 
 // ヘイズの濃さのむら。ノイズを少し歪ませて渦のように流す。
 // 濃い所ほどビームが明るく見える（smoke=0 なら一様なヘイズ）
-const SMOKE_GLSL = `
+export const SMOKE_GLSL = `
   uniform float uTime;
   uniform float uSmoke;
   uniform float uGrain;

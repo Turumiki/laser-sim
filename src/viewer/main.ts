@@ -1,5 +1,5 @@
 import {
-  ACESFilmicToneMapping, BoxGeometry, Color, GridHelper, Group, HalfFloatType, Mesh, MeshBasicMaterial, PerspectiveCamera,
+  ACESFilmicToneMapping, BoxGeometry, Color, DepthTexture, GridHelper, Group, HalfFloatType, Mesh, MeshBasicMaterial, PerspectiveCamera,
   Scene, Vector2, WebGLRenderer, WebGLRenderTarget,
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -14,6 +14,8 @@ import { startLoop } from '../engine/loop';
 import { Simulation } from '../engine/simulation';
 import { connectSync } from '../sync/client';
 import { fastTooltips } from '../control/tooltip';
+import { Cookies } from './cookies';
+import { VolumePass, type VolumeProjector } from './volume';
 import { Beams, type Projector, type Rig, type Source } from './beams';
 import { ROOMS, Surfaces, TARGETS, type TargetKind } from './surfaces';
 
@@ -74,6 +76,13 @@ const VIEWS: { id: View; label: string }[] = [
   { id: 'side', label: '横・俯瞰' },
   { id: 'stage', label: 'ステージ後方' },
 ];
+// 描き方。ベクター: 点のデータから直接ビームを出す（実機に近い） / 映像: Unityに渡すのと同じ映像をクッキーとして投影する
+type RenderMode = 'vector' | 'video';
+const RENDER_MODES: { id: RenderMode; label: string }[] = [
+  { id: 'vector', label: 'ベクター（点のデータから）' },
+  { id: 'video', label: '映像（Unityのクッキー方式）' },
+];
+
 const LAYOUTS: { id: Layout; label: string }[] = [
   { id: 'parallel', label: '平行' },
   { id: 'fan', label: '扇' },
@@ -110,12 +119,13 @@ interface ViewerSettings {
   spacing: number;
   layout: Layout;
   view: View;
+  render: RenderMode;
 }
 const RIG_KEY = 'laser:viewer';
 const vs: ViewerSettings = {
   // スマホのGPUは非力なので、初めて開いたときは軽い画質にする
   channels: [channel],
-  quality: matchMedia('(pointer: coarse)').matches ? 'low' : 'mid', haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, extinction: 0.3, target: 'wall', count: 1, spacing: 2, layout: 'parallel', view: 'audience',
+  quality: matchMedia('(pointer: coarse)').matches ? 'low' : 'mid', haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, extinction: 0.3, target: 'wall', count: 1, spacing: 2, layout: 'parallel', view: 'audience', render: 'vector',
   ...loadLocal<ViewerSettings>(RIG_KEY),
 };
 if (!VIEWS.some(v => v.id === vs.view)) vs.view = 'audience';
@@ -127,6 +137,7 @@ if (params.has('ch')) vs.channels = [channel];
   if (TARGETS.some(t => t.id === q('target'))) vs.target = q('target') as TargetKind;
   if (LAYOUTS.some(l => l.id === q('layout'))) vs.layout = q('layout') as Layout;
   if (VIEWS.some(v => v.id === q('view'))) vs.view = q('view') as View;
+  if (RENDER_MODES.some(m => m.id === q('render'))) vs.render = q('render') as RenderMode;
   const num = (k: string, min: number, max: number) => {
     const n = Number(q(k));
     return q(k) !== null && Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : null;
@@ -214,8 +225,10 @@ function placeCamera() {
 placeCamera();
 
 const beams = new Beams(rig, surfaces);
+let projectorList: Projector[] = [];
 const placeProjectors = () => {
   const list = layout(vs.count, vs.spacing, vs.layout);
+  projectorList = list;
   beams.setProjectors(list);
   bodies.clear();
   for (const p of list) {
@@ -239,6 +252,12 @@ scene.add(beams.group);
 // スライダーの1をどのくらいの強さにするか
 const BLOOM_SCALE = 0.5;
 let composer: EffectComposer;
+let volume: VolumePass;
+const cookies = new Cookies();
+// 映像の描き方の明るさ。ベクターの見え方とだいたい揃うように合わせた値
+const VIDEO_GAIN = 14;
+// 積算の細かさ（視線に沿って何回調べるか）
+const STEPS: Record<Quality, number> = { high: 96, mid: 48, low: 24 };
 let bloom: UnrealBloomPass;
 // 画質を変えたら、解像度とアンチエイリアスに合わせて作り直す
 // ブルームは画面全体を何段もぼかすので重い。Lowや強さ0のときは処理ごと止める
@@ -255,8 +274,13 @@ const buildComposer = () => {
   }
   renderer.setPixelRatio(q.pixelRatio());
   const target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: q.samples });
+  // 映像の描き方で、光を壁や物の手前で止めるのに奥行きを使う
+  target.depthTexture = new DepthTexture(1, 1);
   composer = new EffectComposer(renderer, target);
   composer.addPass(new RenderPass(scene, camera));
+  volume = new VolumePass(camera, beams.haze);
+  composer.addPass(volume);
+  cookies.size = vs.quality === 'low' ? 256 : 512;
   // しきい値を高めにして、ビームの芯のように明るい所だけをにじませる（ヘイズ全体がかすまないように）
   bloom = new UnrealBloomPass(new Vector2(1, 1), vs.bloom * BLOOM_SCALE, 0.35, 0.6);
   composer.addPass(bloom);
@@ -359,7 +383,21 @@ startLoop(dt => {
       frame: s.mode === 'scan' ? null : f.sim.currentFrame(),
     });
   }
-  beams.draw(feedOrder.map(f => sources.get(f)!));
+  const video = vs.render === 'video';
+  beams.group.visible = !video;
+  volume.enabled = video;
+  if (video) {
+    // 各台に、そのチャンネルの映像をクッキーとして割り当てる
+    const list: VolumeProjector[] = projectorList.map((p, k) => {
+      const f = feedOrder[k % feedOrder.length];
+      return { ...p, halfTan: Math.tan(f.store.get().scanAngle / 2 * Math.PI / 180), cookie: cookies.get(f.store, f.sim) };
+    });
+    cookies.update(new Set(feedOrder.map(f => f.sim)));
+    volume.set(list, STEPS[vs.quality] ?? 48, vs.distance * 1.5, vs.haze * VIDEO_GAIN);
+  } else {
+    cookies.update(new Set());
+    beams.draw(feedOrder.map(f => sources.get(f)!));
+  }
   beams.haze.uTime.value = performance.now() / 1000;
   controls.update();
   composer.render();
@@ -369,7 +407,7 @@ startLoop(dt => {
 
 function buildRigPanel() {
   const panel = document.getElementById('rig')!;
-  const rows: [Exclude<keyof ViewerSettings, 'target' | 'quality' | 'layout' | 'view' | 'channels'>, string, number, number, number][] = [
+  const rows: [Exclude<keyof ViewerSettings, 'target' | 'quality' | 'layout' | 'view' | 'channels' | 'render'>, string, number, number, number][] = [
     ['count', '台数', 1, 8, 1],
     ['spacing', '間隔', 0.5, 10, 0.5],
     ['haze', 'ヘイズ', 0.1, 5, 0.05],
@@ -392,6 +430,18 @@ function buildRigPanel() {
   qualityRow.title = 'High: 高解像度・アンチエイリアス・細かいスモーク。Low: 解像度を下げ、ブルームなしで軽くする（スマホ向け）';
   qualityRow.append('画質', quality);
   panel.append(qualityRow);
+
+  const modeRow = document.createElement('label');
+  const modeSel = document.createElement('select');
+  for (const m of RENDER_MODES) modeSel.add(new Option(m.label, m.id));
+  modeSel.value = vs.render;
+  modeSel.addEventListener('change', () => {
+    vs.render = modeSel.value as RenderMode;
+    saveLocal(RIG_KEY, vs);
+  });
+  modeRow.title = 'ベクター: 点のデータから直接ビームを出す（実機に近い）。映像: Unityに渡すのと同じ映像を、スポットライトのクッキーとして投影する（Unityで起きることの再現）';
+  modeRow.append('描き方', modeSel);
+  panel.append(modeRow);
 
   const layoutRow = document.createElement('label');
   const layoutSel = document.createElement('select');

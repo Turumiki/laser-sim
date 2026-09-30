@@ -11,9 +11,10 @@ export class Engine {
   private inst = new Instances();
   private store: Store;
 
-  constructor(canvas: HTMLCanvasElement, store: Store) {
+  // sim を渡すと、そのシミュレーションを描くだけにする（3Dビューアで同じ動きを映像にするとき）
+  constructor(canvas: HTMLCanvasElement, store: Store, sim?: Simulation) {
     this.store = store;
-    this.sim = new Simulation(store);
+    this.sim = sim ?? new Simulation(store);
     this.renderer = new LaserRenderer(canvas);
   }
 
@@ -29,9 +30,10 @@ export class Engine {
     this.sim.update(dt);
   }
 
-  render() {
+  // size を渡すと、出力サイズの代わりにそのサイズで描く
+  render(size?: readonly [number, number]) {
     const s = this.store.get();
-    const [W, H] = outputSize(s);
+    const [W, H] = size ?? outputSize(s);
     const side = Math.min(W, H);
     // 太さはFHD基準のpx。解像度が変わっても見た目の比率は同じにする
     const px = side / 1080;
