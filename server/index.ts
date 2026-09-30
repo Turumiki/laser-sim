@@ -15,7 +15,18 @@ const PORT = Number(process.env.PORT) || 8765;
 
 const states = new StateStore(path.join(ROOT, '.state.json'));
 // 以前のバージョンで保存された、型や範囲が合わない値を掃除する
-states.rewrite(d => sanitize(d) as Record<string, unknown>);
+states.rewrite(d => {
+  // 試作版（Python）の形式 {v, data: {...}} だったら中身を取り出す
+  const inner = d.data && typeof d.data === 'object' ? d.data as Record<string, unknown> : d;
+  return sanitize(inner) as Record<string, unknown>;
+});
+
+// チャンネル名は英数字と _ - だけ。オブジェクトの特別な名前（__proto__ など）は使わせない
+const RESERVED = new Set(['__proto__', 'constructor', 'prototype']);
+function channelOf(url: URL) {
+  const ch = url.searchParams.get('ch') || 'default';
+  return /^[A-Za-z0-9_-]{1,40}$/.test(ch) && !RESERVED.has(ch) ? ch : 'default';
+}
 const channels = new Map<string, Set<WebSocket>>();
 const clocks = new Clocks();
 const shows = new ShowPlayer(path.join(ROOT, '.shows.json'), (ch, values) => applyPatch(ch, values, null), broadcastShow);
@@ -71,7 +82,7 @@ async function readBody(req: IncomingMessage) {
 
 // HTTP API（curlや他のアプリから操作する用）
 async function api(req: IncomingMessage, res: ServerResponse, url: URL) {
-  const ch = url.searchParams.get('ch') || 'default';
+  const ch = channelOf(url);
   if (url.pathname === '/api/state') {
     if (req.method === 'GET') return json(res, 200, states.get(ch));
     if (req.method === 'POST' || req.method === 'PATCH') {
@@ -117,7 +128,7 @@ server.on('upgrade', (req, socket, head) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
   // それ以外（ViteのHMR）は Vite 側が受け持つ
   if (url.pathname !== '/sync') return;
-  const ch = url.searchParams.get('ch') || 'default';
+  const ch = channelOf(url);
   wss.handleUpgrade(req, socket, head, ws => {
     const id = randomUUID();
     let set = channels.get(ch);

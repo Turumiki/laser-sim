@@ -41,7 +41,17 @@ const standMaterial = new MeshBasicMaterial({ color: 0x1d1d1d, side: DoubleSide 
 const edgeMaterial = new LineBasicMaterial({ color: 0x333333 });
 
 // 長方形の面。点 = p + a*u + b*v（0≦a,b≦1、u と v は直交）
-interface Quad { p: number[]; u: number[]; v: number[]; stand?: boolean }
+interface Quad {
+  p: number[];
+  u: number[];
+  v: number[];
+  stand?: boolean;
+  // 当たり判定用に前もって計算しておく値（法線、n・p、|u|²、|v|²）
+  n?: number[];
+  np?: number;
+  uu?: number;
+  vv?: number;
+}
 
 const dot = (a: readonly number[], b: readonly number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const cross = (a: number[], b: number[]) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
@@ -109,6 +119,7 @@ export class Surfaces {
   private toCube = new Matrix4();
   private v = new Vector3();
   private o = new Vector3();
+  private w = [0, 0, 0];
 
   build(kind: TargetKind, distance: number) {
     this.kind = kind;
@@ -117,11 +128,21 @@ export class Surfaces {
     this.floor = this.room?.floor ?? DEFAULT_FLOOR;
     this.center = distance * 0.72;
     this.size = distance * 0.16;
+    // 前の形が持っていたGPUのメモリを手放してから作り直す
+    this.group.traverse(o => {
+      if (o !== this.group && 'geometry' in o) (o as Mesh).geometry.dispose();
+    });
     this.group.clear();
     this.quads = [];
     if (kind === 'none') return;
     if (this.room) {
       this.quads = roomQuads(this.room, distance);
+      for (const q of this.quads) {
+        q.n = cross(q.u, q.v);
+        q.np = dot(q.n, q.p);
+        q.uu = dot(q.u, q.u);
+        q.vv = dot(q.v, q.v);
+      }
       for (const q of this.quads) this.group.add(quadMesh(q));
       return;
     }
@@ -196,14 +217,14 @@ export class Surfaces {
 
   private hitQuads(o: readonly number[], d: readonly number[]) {
     let best = Infinity;
-    const w = [0, 0, 0];
+    const w = this.w;
     for (const q of this.quads) {
-      const n = cross(q.u, q.v), den = dot(n, d);
+      const n = q.n!, den = dot(n, d);
       if (Math.abs(den) < 1e-12) continue;
-      const t = (dot(n, q.p) - dot(n, o)) / den;
+      const t = (q.np! - dot(n, o)) / den;
       if (t <= 1e-6 || t >= best) continue;
       for (let k = 0; k < 3; k++) w[k] = o[k] + d[k] * t - q.p[k];
-      const a = dot(w, q.u) / dot(q.u, q.u), b = dot(w, q.v) / dot(q.v, q.v);
+      const a = dot(w, q.u) / q.uu!, b = dot(w, q.v) / q.vv!;
       if (a >= 0 && a <= 1 && b >= 0 && b <= 1) best = t;
     }
     return best;

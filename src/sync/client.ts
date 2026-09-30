@@ -60,8 +60,11 @@ export function connectSync(store: Store, opts: Options) {
   const ping = () => { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping', t: Date.now() })); };
   setInterval(ping, 5000);
 
+  // つながっていない間の変更は取っておき、つながり直したら送る
+  let unsent: Partial<Settings> | null = null;
   const send = (data: Partial<Settings>) => {
     if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'patch', data }));
+    else unsent = { ...unsent, ...data };
   };
 
   // ドラッグ中などは細かく来るので、16msぶんまとめて送る
@@ -94,6 +97,12 @@ export function connectSync(store: Store, opts: Options) {
         if (Object.keys(msg.data).length) store.set(sanitize(msg.data), 'remote');
         // まだ誰も設定していないチャンネルなら、この画面の設定を初期値にする
         else if (opts.role === 'control') send(store.get());
+        // 切れている間にこの画面で変えた分は、サーバーの値より優先する（store.set でそのまま送られる）
+        if (unsent && opts.role === 'control') {
+          const mine = unsent;
+          unsent = null;
+          store.set(mine);
+        }
       } else if (msg.type === 'patch' && msg.from !== myId) {
         store.set(sanitize(msg.data), 'remote');
       }

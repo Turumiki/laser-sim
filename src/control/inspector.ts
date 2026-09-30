@@ -109,12 +109,17 @@ function numberRow(p: NumberParam, label: HTMLElement, store: Store): [HTMLEleme
       const dx = (m.clientX - x0) * (m.shiftKey ? 0.1 : 1);
       set(p.log ? v0 * Math.pow(p.max / p.min, dx / 300) : v0 + dx * (p.max - p.min) / 300);
     };
+    // タッチでスクロールに切り替わったときなどは pointerup が来ないので、取り消しでも終える
     const up = () => {
       label.removeEventListener('pointermove', move);
       label.removeEventListener('pointerup', up);
+      label.removeEventListener('pointercancel', up);
+      label.removeEventListener('lostpointercapture', up);
     };
     label.addEventListener('pointermove', move);
     label.addEventListener('pointerup', up);
+    label.addEventListener('pointercancel', up);
+    label.addEventListener('lostpointercapture', up);
   });
 
   input.addEventListener('focus', () => input.select());

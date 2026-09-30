@@ -7,7 +7,9 @@ import type { Settings } from '../core/params';
 import type { Scanner } from '../core/scanner';
 import type { Surfaces } from './surfaces';
 import { smokeTexture } from './noise';
-import { EYE_GAIN } from '../core/color';
+import { EYE_GAIN, MAX_MIRROR } from '../core/color';
+
+const clampMirror = (v: number) => Math.max(-MAX_MIRROR, Math.min(MAX_MIRROR, v));
 
 export interface Rig {
   // 走査角（片側, rad）。点の座標1がこの角度になる
@@ -253,8 +255,9 @@ export class Beams {
   private hit(x: number, y: number, out: number[]) {
     const a = this.rig.halfAngle * this.scale;
     // 2枚のミラーで振るので、Yを振るほどXが広がる（糸巻きゆがみ）
-    const warp = this.pincushion ? 1 / Math.cos(y * a) : 1;
-    const tx = Math.tan(x * a) * warp * (this.proj.mirror ? -1 : 1), ty = Math.tan(y * a);
+    const ax = clampMirror(x * a), ay = clampMirror(y * a);
+    const warp = this.pincushion ? 1 / Math.cos(ay) : 1;
+    const tx = Math.tan(ax) * warp * (this.proj.mirror ? -1 : 1), ty = Math.tan(ay);
     // プロジェクターの向き（y軸まわりの回転）に合わせる。正面は -z
     const d = this.dir, o = this.proj.pos;
     d[0] = tx * this.cos - this.sin;

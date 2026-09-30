@@ -197,7 +197,11 @@ const applyBloom = () => {
 };
 const buildComposer = () => {
   const q = QUALITY[vs.quality] ?? QUALITY.mid;
-  composer?.dispose();
+  // 作り直す前に、前のブルームなどが持っていたGPUのメモリを手放す
+  if (composer) {
+    for (const pass of composer.passes) pass.dispose();
+    composer.dispose();
+  }
   renderer.setPixelRatio(q.pixelRatio());
   const target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: q.samples });
   composer = new EffectComposer(renderer, target);
@@ -223,6 +227,8 @@ addEventListener('resize', resize);
 buildComposer();
 
 buildRigPanel();
+// 開発中だけ、ブラウザのコンソールから中身を見られるようにする
+if (import.meta.env.DEV) Object.assign(window, { laser3d: { renderer, store } });
 
 // ?stats=1 で、fps と1フレームの処理時間（CPU側）を出す
 const stats = params.get('stats') === '1' ? document.body.appendChild(document.createElement('div')) : null;
@@ -327,11 +333,12 @@ function buildRigPanel() {
     const show = () => { out.textContent = String(vs[key]); };
     input.addEventListener('input', () => {
       vs[key] = Number(input.value);
+      // 形を作り直すのは、形に関わる値が変わったときだけ（毎回作ると重く、GPUのメモリも食う）
+      if (key === 'distance') placeWall();
+      else if (key === 'count' || key === 'spacing') placeProjectors();
+      else if (key === 'bloom') applyBloom();
+      else applySmoke();
       applyRig();
-      placeWall();
-      applyBloom();
-      applySmoke();
-      placeProjectors();
       saveLocal(RIG_KEY, vs);
       show();
     });

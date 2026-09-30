@@ -13,7 +13,14 @@ const TYPES: Record<string, string> = {
 };
 
 export function serveStatic(root: string, pathname: string, res: ServerResponse) {
-  let rel = decodeURIComponent(pathname);
+  let rel: string;
+  try {
+    rel = decodeURIComponent(pathname);
+  } catch {
+    // 壊れた % 表記のURL。例外で落ちないよう、ここで断る
+    res.writeHead(400).end();
+    return;
+  }
   if (rel.endsWith('/')) rel += 'index.html';
   const file = path.join(root, path.normalize(rel));
   if (!file.startsWith(root + path.sep)) {
