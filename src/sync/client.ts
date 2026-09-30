@@ -1,4 +1,5 @@
 import { sanitize, type Settings } from '../core/params';
+import type { Show } from '../core/show';
 import type { Store } from '../core/store';
 
 export type SyncStatus = 'connecting' | 'open' | 'closed';
@@ -8,6 +9,12 @@ interface Options {
   // control: 操作を送る / output: 受け取るだけ
   role: 'control' | 'output';
   onStatus?: (s: SyncStatus) => void;
+  onShow?: (s: ShowInfo) => void;
+}
+
+export interface ShowInfo {
+  state: { playing: boolean; id: string | null; index: number; startedAt: number };
+  custom: Show | null;
 }
 
 interface Clock { t0: number; anim: number; rate: number }
@@ -15,7 +22,8 @@ interface Clock { t0: number; anim: number; rate: number }
 type Message =
   | { type: 'hello'; id: string; data: Record<string, unknown>; clock: Clock }
   | { type: 'patch'; from: string | null; data: Record<string, unknown>; clock?: Clock }
-  | { type: 'pong'; t: number; server: number };
+  | { type: 'pong'; t: number; server: number }
+  | ({ type: 'show' } & ShowInfo);
 
 // サーバーの時間軸。全部の画面がこれに合わせることで、アニメーションの位置が揃う
 export class TimeBase {
@@ -79,6 +87,7 @@ export function connectSync(store: Store, opts: Options) {
     ws.onmessage = e => {
       const msg = JSON.parse(e.data) as Message;
       if (msg.type === 'pong') { time.onPong(msg.t, msg.server); return; }
+      if (msg.type === 'show') { opts.onShow?.(msg); return; }
       if (msg.clock) time.clock = msg.clock;
       if (msg.type === 'hello') {
         myId = msg.id;
@@ -98,5 +107,9 @@ export function connectSync(store: Store, opts: Options) {
 
   if (location.protocol.startsWith('http')) connect();
   else opts.onStatus?.('closed');
-  return { time };
+  // ショーの操作（play / stop / save）
+  const show = (msg: Record<string, unknown>) => {
+    if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'show', ...msg }));
+  };
+  return { time, show };
 }

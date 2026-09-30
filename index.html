@@ -11,7 +11,14 @@
   <header id="toolbar"></header>
   <main id="viewer"><canvas id="preview"></canvas></main>
   <aside id="inspector"></aside>
-  <footer id="patterns"></footer>
+  <footer id="bottom">
+    <nav class="tabs">
+      <button data-tab="patterns">パターン</button>
+      <button data-tab="sequence">シーケンス</button>
+    </nav>
+    <div id="patterns" class="pane"></div>
+    <div id="sequence" class="pane"></div>
+  </footer>
   <div id="status"></div>
 </div>
 <script type="module" src="/src/control/main.ts"></script>

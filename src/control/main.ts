@@ -7,6 +7,8 @@ import { FrameTimer, startLoop } from '../engine/loop';
 import { connectSync, type SyncStatus } from '../sync/client';
 import { buildInspector } from './inspector';
 import { buildPatternGrid } from './pattern-grid';
+import { buildSequence } from './sequence';
+import { buildTabs } from './tabs';
 import { Recorder } from './recorder';
 import { buildToolbar } from './toolbar';
 import { attachViewer } from './viewer';
@@ -31,12 +33,19 @@ const engine = new Engine(canvas, store);
 if (saved?.animT) engine.scanner.animT = saved.animT;
 
 let sync: SyncStatus = 'connecting';
-const link = connectSync(store, { channel, role: 'control', onStatus: s => { sync = s; } });
+const sequence = buildSequence($('sequence'), store, msg => link.show(msg));
+const link = connectSync(store, {
+  channel,
+  role: 'control',
+  onStatus: s => { sync = s; },
+  onShow: info => sequence.onShow(info),
+});
 
 const recorder = new Recorder(canvas);
 buildToolbar($('toolbar'), store, recorder, channel);
 buildInspector($('inspector'), store);
 buildPatternGrid($('patterns'), store);
+buildTabs($('bottom'));
 attachViewer($('viewer'), canvas, store);
 
 addEventListener('keydown', e => {

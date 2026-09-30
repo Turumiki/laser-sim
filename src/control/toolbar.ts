@@ -1,8 +1,7 @@
 import { OUTPUT_SIZES } from '../core/params';
 import type { Store } from '../core/store';
 import { el } from './dom';
-import { download, stamp } from './download';
-import { exportVideo } from './exporter';
+import { attachExport } from './export-button';
 import type { Recorder } from './recorder';
 
 const EXPORT_TITLE = '今の設定で、頭から1コマずつ計算してMP4に書き出す（映像のfps、コマ落ちなし）';
@@ -25,31 +24,9 @@ export function buildToolbar(root: HTMLElement, store: Store, recorder: Recorder
   dur.value = '10';
   const rec = el('button', { class: 'tb rec', title: '画面をそのまま録画する（リアルタイム）' }, 'REC');
   const exp = el('button', { class: 'tb', title: EXPORT_TITLE }, '書き出し');
-  let abort: AbortController | null = null;
-  exp.addEventListener('click', async () => {
-    if (abort) { abort.abort(); return; }
-    abort = new AbortController();
+  attachExport(exp, () => {
     const seconds = Number(dur.value) || 10;
-    const s = store.get();
-    let failed = '';
-    try {
-      exp.classList.add('on');
-      const blob = await exportVideo(s, {
-        seconds,
-        fps: Number(s.fps),
-        signal: abort.signal,
-        onProgress: r => { exp.textContent = `中止 ${Math.round(r * 100)}%`; },
-      });
-      download(blob, `laser_${s.pattern}_${seconds}s_${stamp()}.mp4`);
-    } catch (e) {
-      if ((e as Error).name !== 'AbortError') failed = (e as Error).message;
-    } finally {
-      abort = null;
-      exp.classList.remove('on');
-      exp.textContent = failed ? '書き出し失敗' : '書き出し';
-      exp.title = failed || EXPORT_TITLE;
-      if (failed) setTimeout(() => { exp.textContent = '書き出し'; }, 4000);
-    }
+    return { settings: store.get(), seconds, name: `laser_${store.get().pattern}_${seconds}s` };
   });
   const time = el('span', { class: 'time' }, '0:00.0');
   rec.addEventListener('click', () => {

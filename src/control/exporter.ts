@@ -1,5 +1,6 @@
 import { BufferTarget, CanvasSource, Mp4OutputFormat, Output, canEncodeVideo } from 'mediabunny';
-import { outputSize, type Settings } from '../core/params';
+import { outputSize, sanitize, type Settings } from '../core/params';
+import { locate, type Show } from '../core/show';
 import { Store } from '../core/store';
 import { Engine } from '../engine/engine';
 
@@ -8,6 +9,8 @@ export interface ExportOptions {
   fps: number;
   onProgress?: (ratio: number) => void;
   signal?: AbortSignal;
+  // 指定があれば、ショーの流れに沿って設定を切り替えながら書き出す
+  show?: Show;
 }
 
 // 設定をその時点で固定し、t=0 から1コマずつ計算して書き出す。
@@ -19,7 +22,9 @@ export async function exportVideo(settings: Readonly<Settings>, opts: ExportOpti
   }
 
   const canvas = document.createElement('canvas');
-  const engine = new Engine(canvas, new Store({ ...settings, paused: false }));
+  const store = new Store({ ...settings, paused: false });
+  const engine = new Engine(canvas, store);
+  let step = -1;
   try {
     engine.render();
     const output = new Output({ format: new Mp4OutputFormat({ fastStart: 'in-memory' }), target: new BufferTarget() });
@@ -34,6 +39,13 @@ export async function exportVideo(settings: Readonly<Settings>, opts: ExportOpti
       if (opts.signal?.aborted) {
         await output.cancel();
         throw new DOMException('中止しました', 'AbortError');
+      }
+      if (opts.show) {
+        const pos = locate(opts.show, i * dt);
+        if (pos && pos.index !== step) {
+          step = pos.index;
+          store.set(sanitize(opts.show.steps[step].values));
+        }
       }
       engine.update(dt);
       engine.render();

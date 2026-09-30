@@ -33,6 +33,15 @@ Node.js 22.18 以上
 curl -X POST http://localhost:8765/api/state -d '{"pattern":"star","rotSpeed":90}'
 ```
 
+ショー（シーケンス）の再生と停止:
+
+```sh
+curl -X POST http://localhost:8765/api/show -d '{"action":"play","id":"opening"}'
+curl -X POST http://localhost:8765/api/show -d '{"action":"stop"}'
+```
+
+組み込みのショーは `opening`、`beams`、`graphics`。操作画面で作ったものは `custom`。
+
 チャンネルを分けるときは `?ch=名前`（操作画面、出力、APIで共通）。
 
 ## 開発

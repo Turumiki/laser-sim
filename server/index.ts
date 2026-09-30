@@ -4,6 +4,7 @@ import { networkInterfaces } from 'node:os';
 import path from 'node:path';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { Clocks } from './clock.ts';
+import { ShowPlayer } from './show.ts';
 import { StateStore } from './state.ts';
 import { serveStatic } from './static.ts';
 
@@ -14,6 +15,22 @@ const PORT = Number(process.env.PORT) || 8765;
 const states = new StateStore(path.join(ROOT, '.state.json'));
 const channels = new Map<string, Set<WebSocket>>();
 const clocks = new Clocks();
+const shows = new ShowPlayer(path.join(ROOT, '.shows.json'), (ch, values) => applyPatch(ch, values, null), broadcastShow);
+
+function showMessage(ch: string) {
+  return JSON.stringify({ type: 'show', state: shows.state(ch), custom: shows.customOf(ch) });
+}
+
+function broadcastShow(ch: string) {
+  const msg = showMessage(ch);
+  for (const ws of channels.get(ch) ?? []) if (ws.readyState === ws.OPEN) ws.send(msg);
+}
+
+function showCommand(ch: string, msg: Record<string, unknown>) {
+  if (msg.action === 'play') shows.play(ch, msg.id);
+  else if (msg.action === 'stop') shows.stop(ch);
+  else if (msg.action === 'save') shows.saveCustom(ch, msg.show);
+}
 
 function broadcast(ch: string, data: Record<string, unknown>, from: string | null, withClock: boolean) {
   const clock = withClock ? clocks.get(ch, states.get(ch)) : undefined;
@@ -59,6 +76,12 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL) {
       return json(res, 400, { error: 'JSONのオブジェクトを送ってください' });
     }
   }
+  if (url.pathname === '/api/show') {
+    if (req.method === 'POST') {
+      try { showCommand(ch, JSON.parse(await readBody(req))); } catch { return json(res, 400, { error: 'JSONを送ってください' }); }
+    }
+    return json(res, 200, { state: shows.state(ch), custom: shows.customOf(ch) });
+  }
   if (url.pathname === '/api/info') return json(res, 200, { lan: lanUrls(), port: PORT });
   json(res, 404, { error: 'not found' });
 }
@@ -96,10 +119,12 @@ server.on('upgrade', (req, socket, head) => {
     if (!set) channels.set(ch, set = new Set());
     set.add(ws);
     ws.send(JSON.stringify({ type: 'hello', id, data: states.get(ch), clock: clocks.get(ch, states.get(ch)) }));
+    ws.send(showMessage(ch));
     ws.on('message', raw => {
       try {
         const msg = JSON.parse(String(raw));
         if (msg?.type === 'patch') applyPatch(ch, msg.data, id);
+        if (msg?.type === 'show') showCommand(ch, msg);
         // 各画面がサーバーとの時計のずれを測る用
         if (msg?.type === 'ping') ws.send(JSON.stringify({ type: 'pong', t: msg.t, server: Date.now() }));
       } catch { /* 壊れたメッセージは無視 */ }
@@ -115,6 +140,6 @@ server.listen(PORT, () => {
   for (const u of lanUrls()) console.log(`  LAN        ${u}/`);
 });
 
-const shutdown = () => { states.flush(); process.exit(0); };
+const shutdown = () => { states.flush(); shows.flush(); process.exit(0); };
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
