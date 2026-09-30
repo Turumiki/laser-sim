@@ -47,7 +47,7 @@ export class Engine {
     if (s.mode === 'scan') {
       scanInstances(this.inst, this.scanner, s, view, this.sim.exposureTime());
     } else {
-      frameInstances(this.inst, this.sim.currentFrame(), view);
+      frameInstances(this.inst, this.sim.currentFrame(), s, view);
     }
 
     this.renderer.resize(W, H);

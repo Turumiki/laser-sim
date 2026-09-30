@@ -7,6 +7,7 @@ import type { Settings } from '../core/params';
 import type { Scanner } from '../core/scanner';
 import type { Surfaces } from './surfaces';
 import { smokeTexture } from './noise';
+import { EYE_GAIN } from '../core/color';
 
 export interface Rig {
   // 走査角（片側, rad）。点の座標1がこの角度になる
@@ -230,6 +231,9 @@ export class Beams {
   private rig: Rig;
   // 点の座標はサイズを掛ける前の値なので、ここで掛ける
   private scale = 1;
+  private pincushion = true;
+  // 色ごとの見かけの明るさ
+  private gain: readonly number[] = [1, 1, 1];
 
   private surfaces: Surfaces;
   readonly haze: HazeUniforms = { uTime: { value: 0 }, uSmoke: { value: 0.6 }, uGrain: { value: 0.6 }, uExt: { value: 0.015 }, uThick: { value: 1 }, uNoise: { value: smokeTexture() }, uProcedural: { value: 0 } };
@@ -248,7 +252,9 @@ export class Beams {
   // 点の座標 → ビームが当たる位置。戻り値は奥行き（何にも当たらなければ Infinity）
   private hit(x: number, y: number, out: number[]) {
     const a = this.rig.halfAngle * this.scale;
-    const tx = Math.tan(x * a) * (this.proj.mirror ? -1 : 1), ty = Math.tan(y * a);
+    // 2枚のミラーで振るので、Yを振るほどXが広がる（糸巻きゆがみ）
+    const warp = this.pincushion ? 1 / Math.cos(y * a) : 1;
+    const tx = Math.tan(x * a) * warp * (this.proj.mirror ? -1 : 1), ty = Math.tan(y * a);
     // プロジェクターの向き（y軸まわりの回転）に合わせる。正面は -z
     const d = this.dir, o = this.proj.pos;
     d[0] = tx * this.cos - this.sin;
@@ -333,6 +339,8 @@ export class Beams {
 
   private begin(s: Readonly<Settings>) {
     this.scale = s.size;
+    this.pincushion = s.pincushion;
+    this.gain = s.eye ? EYE_GAIN : [1, 1, 1];
     this.cached = -1;
     this.sheets.count = this.rays.count = this.wall.count = 0;
   }
@@ -366,7 +374,7 @@ export class Beams {
       if (!sc.on[i]) continue;
       const w = isExp ? Math.exp(-(sc.scanT - sc.t[i]) / tau) : 1;
       const e = w * dt / tau;
-      const r = sc.r[i] / 255, g = sc.g[i] / 255, b = sc.b[i] / 255;
+      const r = sc.r[i] / 255 * this.gain[0], g = sc.g[i] / 255 * this.gain[1], b = sc.b[i] / 255 * this.gain[2];
       const d = Math.hypot(sc.x[i] - sc.x[j], sc.y[i] - sc.y[j]);
       this.ends(j, sc.x[j], sc.y[j], sc.x[i], sc.y[i], i);
       // ほとんど動いていない間は1本のビーム、動いている間は光の膜
@@ -396,7 +404,7 @@ export class Beams {
     let prevLit = false;
     for (let i = 1; i < f.length; i++) {
       if (!f.on[i]) { prevLit = false; continue; }
-      const r = f.r[i] / 255, g = f.g[i] / 255, b = f.b[i] / 255;
+      const r = f.r[i] / 255 * this.gain[0], g = f.g[i] / 255 * this.gain[1], b = f.b[i] / 255 * this.gain[2];
       const d = Math.hypot(f.x[i] - f.x[i - 1], f.y[i] - f.y[i - 1]);
       if (d > 1e-3) {
         this.ends(i - 1, f.x[i - 1], f.y[i - 1], f.x[i], f.y[i], i);

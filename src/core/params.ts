@@ -22,11 +22,13 @@ export interface Settings {
   damping: number;
   colorShift: number;
   scanAngle: number;
+  pincushion: boolean;
   density: number;
   animSpeed: number;
   timeScale: number;
 
   exposureShape: ExposureShape;
+  eye: boolean;
   exposureSync: boolean;
   exposure: number;
 
@@ -115,6 +117,7 @@ export const PARAMS: readonly ParamDef[] = [
   { kind: 'number', key: 'damping', label: '減衰', hint: 'ミラーの減衰（ダンピング）。小さいと角で行き過ぎて揺れ（オーバーシュート）、大きいと角が丸くなる', group: 'projector', min: 0.2, max: 1.5, digits: 2 },
   { kind: 'number', key: 'colorShift', label: 'カラーシフト', hint: '色（点灯・消灯を含む）を座標に対して遅らせる時間。ミラーの遅れに合わせる補正。合っていないと角や線の端で色がはみ出す', group: 'projector', min: -200, max: 500, digits: 0, unit: 'µs' },
   { kind: 'number', key: 'scanAngle', label: '最大走査角', hint: 'プロジェクターが振れる最大の角度（光学角）。映像の正方形の幅がこの角度になる。Unityのスポットライトの角度はこれに合わせる。大きいほどミラーを大きく振るので、同じサイズでも図形が崩れやすい', group: 'projector', min: 5, max: 90, digits: 0, unit: '°' },
+  { kind: 'bool', key: 'pincushion', label: '糸巻きゆがみ', hint: 'X用とY用の2枚のミラーで振るため、平面に映すと四隅が外へ引っぱられた形（糸巻き型）になる。走査角が大きいほど目立つ', group: 'projector' },
   { kind: 'number', key: 'beam', label: 'ビーム径', hint: 'ビームの太さ。FHD換算のpx', group: 'projector', min: 0.5, max: 10, digits: 1, unit: 'px' },
 
   { kind: 'enum', key: 'exposureShape', label: '露光方式', hint: 'シャッター: 露光時間内の光を均等に積算する（カメラ）。残像: 古い光ほど暗くなる（目）', group: 'camera', options: [
@@ -123,6 +126,7 @@ export const PARAMS: readonly ParamDef[] = [
   ] },
   { kind: 'bool', key: 'exposureSync', label: '1コマに合わせる', hint: '露光時間を映像の1コマ（1 ÷ 映像のfps）にする。コマの間に写らない時間ができない。映像のfpsは「出力」で設定', group: 'camera' },
   { kind: 'number', key: 'exposure', label: '露光時間', hint: '光を積算する時間。16.7ms（1/60秒）で1コマ分', group: 'camera', inactive: s => s.exposureSync, min: 0.2, max: 200, log: true, digits: 1, unit: 'ms' },
+  { kind: 'bool', key: 'eye', label: '目の感度', hint: '色ごとの見かけの明るさ。人の目は緑に敏感で、同じ出力でも赤や青は暗く見える（一般的なRGB機: 赤638nm・緑520nm・青450nm）。Unityに渡す映像は、狙った色のままにしたいならオフ', group: 'camera' },
   { kind: 'number', key: 'glow', label: 'グロー', hint: 'ビーム周辺のにじみ。ヘイズやレンズでの散乱に相当', group: 'camera', min: 0, max: 3, digits: 2 },
   { kind: 'number', key: 'bright', label: '明るさ', hint: '露光量。上げると強く当たった部分が白く飛ぶ', group: 'camera', min: 0.1, max: 5, log: true, digits: 2 },
 
@@ -159,10 +163,12 @@ export const DEFAULTS: Readonly<Settings> = {
   damping: 0.6,
   colorShift: 80,
   scanAngle: 40,
+  pincushion: true,
   density: 0.025,
   animSpeed: 1,
   timeScale: 1,
   exposureShape: 'box',
+  eye: false,
   exposureSync: true,
   exposure: 1000 / 60,
   beam: 2.2,
