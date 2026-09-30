@@ -39,16 +39,20 @@ const feedOf = (ch: string): Feed => {
 };
 // 台に割り当てるチャンネルの並び。使わなくなったチャンネルは接続を切る
 let feedOrder: Feed[] = [];
-const useChannels = (list: string[]) => {
-  const names = list.length ? list : [channel];
+const useChannels = () => {
+  const names = assigned();
   feedOrder = names.map(feedOf);
   for (const [ch, f] of feeds) {
     if (!names.includes(ch)) { f.sync.close(); feeds.delete(ch); }
   }
 };
 
-const parseChannels = (text: string) =>
-  text.split(',').map(t => t.trim()).filter(t => /^[A-Za-z0-9_-]{1,40}$/.test(t)).slice(0, 8);
+const validChannel = (t: unknown): t is string => typeof t === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(t);
+// 1台ずつのチャンネル。足りない台は、最後に決めた台と同じチャンネルにする
+const assigned = () => {
+  const list = vs.channels.filter(validChannel);
+  return Array.from({ length: vs.count }, (_, i) => list[Math.min(i, list.length - 1)] ?? channel);
+};
 
 // ビューア独自の設定（同期しない）
 type Quality = 'high' | 'mid' | 'low';
@@ -92,8 +96,8 @@ function layout(count: number, spacing: number, mode: Layout): Projector[] {
 }
 
 interface ViewerSettings {
-  // 台に割り当てるチャンネル（カンマ区切り）
-  channels: string;
+  // 台ごとのチャンネル（左の台から順）
+  channels: string[];
   quality: Quality;
   haze: number;
   distance: number;
@@ -110,14 +114,16 @@ interface ViewerSettings {
 const RIG_KEY = 'laser:viewer';
 const vs: ViewerSettings = {
   // スマホのGPUは非力なので、初めて開いたときは軽い画質にする
-  channels: channel,
+  channels: [channel],
   quality: matchMedia('(pointer: coarse)').matches ? 'low' : 'mid', haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, extinction: 0.3, target: 'wall', count: 1, spacing: 2, layout: 'parallel', view: 'audience',
   ...loadLocal<ViewerSettings>(RIG_KEY),
 };
 if (!VIEWS.some(v => v.id === vs.view)) vs.view = 'audience';
 // URLでチャンネルを指定して開いたときは、それを使う
-if (params.has('ch')) vs.channels = channel;
-useChannels(parseChannels(vs.channels));
+if (params.has('ch')) vs.channels = [channel];
+// 以前はカンマ区切りの文字で持っていた
+if (typeof vs.channels === 'string') vs.channels = (vs.channels as string).split(',').map(t => t.trim());
+useChannels();
 const rig: Rig = { distance: 0, haze: 0 };
 const applyRig = () => {
   rig.distance = vs.distance;
@@ -256,6 +262,44 @@ const resize = () => {
 addEventListener('resize', resize);
 buildComposer();
 
+// 台ごとのチャンネルを選ぶ欄。選択肢はサーバーで使われているチャンネルの一覧
+const assignBox = document.createElement('div');
+assignBox.className = 'assign';
+let knownChannels: string[] = [];
+const refreshChannels = () =>
+  fetch('/api/channels').then(r => r.json()).then((list: string[]) => {
+    knownChannels = list;
+    renderAssign();
+  }).catch(() => {});
+function renderAssign() {
+  const names = assigned();
+  assignBox.replaceChildren();
+  const head = document.createElement('div');
+  head.className = 'assign-head';
+  head.textContent = '台ごとのチャンネル';
+  head.title = '左の台から順。出力や操作画面と同じチャンネル名のものが連動する';
+  assignBox.append(head);
+  names.forEach((name, i) => {
+    const row = document.createElement('label');
+    row.classList.add('wide');
+    const sel = document.createElement('select');
+    for (const c of new Set([...knownChannels, ...names])) sel.add(new Option(c, c));
+    sel.value = name;
+    // 開くたびに最新の一覧にする
+    sel.addEventListener('focus', refreshChannels, { once: true });
+    sel.addEventListener('change', () => {
+      const next = assigned();
+      next[i] = sel.value;
+      vs.channels = next;
+      useChannels();
+      saveLocal(RIG_KEY, vs);
+    });
+    row.append(`${i + 1}台目`, sel);
+    assignBox.append(row);
+  });
+}
+refreshChannels();
+
 buildRigPanel();
 fastTooltips();
 // 開発中だけ、ブラウザのコンソールから中身を見られるようにする
@@ -293,6 +337,7 @@ startLoop(dt => {
   composer.render();
   cpu += (performance.now() - t0 - cpu) * 0.05;
 });
+
 
 function buildRigPanel() {
   const panel = document.getElementById('rig')!;
@@ -333,19 +378,8 @@ function buildRigPanel() {
   layoutRow.append('並べ方', layoutSel);
   panel.append(layoutRow);
 
-  const chRow = document.createElement('label');
-  const chInput = Object.assign(document.createElement('input'), { type: 'text', value: vs.channels, spellcheck: false });
-  chInput.placeholder = 'left,right';
-  chInput.addEventListener('change', () => {
-    vs.channels = parseChannels(chInput.value).join(',') || channel;
-    chInput.value = vs.channels;
-    useChannels(parseChannels(vs.channels));
-    saveLocal(RIG_KEY, vs);
-  });
-  chRow.classList.add('wide');
-  chRow.title = '台に割り当てるチャンネル。カンマ区切りで、左の台から順に繰り返して使う（例: left,right）';
-  chRow.append('チャンネル', chInput);
-  panel.append(chRow);
+  panel.append(assignBox);
+  renderAssign();
   const targetRow = document.createElement('label');
   const select = document.createElement('select');
   for (const t of TARGETS) select.add(new Option(t.label, t.id));
@@ -390,7 +424,7 @@ function buildRigPanel() {
       vs[key] = Number(input.value);
       // 形を作り直すのは、形に関わる値が変わったときだけ（毎回作ると重く、GPUのメモリも食う）
       if (key === 'distance') placeWall();
-      else if (key === 'count' || key === 'spacing') placeProjectors();
+      else if (key === 'count' || key === 'spacing') { placeProjectors(); useChannels(); renderAssign(); }
       else if (key === 'bloom') applyBloom();
       else applySmoke();
       applyRig();
