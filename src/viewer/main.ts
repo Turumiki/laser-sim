@@ -254,8 +254,8 @@ const BLOOM_SCALE = 0.5;
 let composer: EffectComposer;
 let volume: VolumePass;
 const cookies = new Cookies();
-// 映像の描き方の明るさ。ベクターの見え方とだいたい揃うように合わせた値
-const VIDEO_GAIN = 14;
+// 映像の描き方の明るさ。ベクターの見え方とだいたい揃うように合わせた値（クッキーは光源用の映像）
+const VIDEO_GAIN = 36;
 // 積算の細かさ（視線に沿って何回調べるか）
 // 光の範囲の中だけを調べるので、1台あたりの回数（範囲の外は調べない）
 const STEPS: Record<Quality, number> = { high: 40, mid: 24, low: 14 };
