@@ -158,9 +158,8 @@ export class Beams {
   }
 
   // スキャン: 露光時間内に通った軌跡。遅く動いた所ほど明るい（2D出力と同じ考え方）
-  fromScanner(sc: Scanner, s: Readonly<Settings>) {
+  fromScanner(sc: Scanner, s: Readonly<Settings>, tau: number) {
     this.begin(s);
-    const tau = s.exposure / 1000;
     const isExp = s.exposureShape === 'exp';
     const window = isExp ? tau * 5 : tau;
     const dt = 1 / s.pps;

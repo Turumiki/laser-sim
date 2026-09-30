@@ -39,6 +39,7 @@ export function buildInspector(root: HTMLElement, store: Store) {
       updaters.push(st => {
         update(st);
         row.classList.toggle('changed', !isDefault(p, st));
+        row.classList.toggle('inactive', !!p.inactive?.(st));
       });
     }
     root.append(section);

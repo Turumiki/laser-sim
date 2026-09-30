@@ -8,6 +8,7 @@ export interface Settings {
 
   mode: RenderMode;
   output: string;
+  fps: string;
   clip: boolean;
 
   offX: number;
@@ -25,6 +26,7 @@ export interface Settings {
   timeScale: number;
 
   exposureShape: ExposureShape;
+  exposureSync: boolean;
   exposure: number;
 
   beam: number;
@@ -57,6 +59,8 @@ interface ParamBase {
   group: GroupId;
   // ツールチップ
   hint?: string;
+  // この条件のときは効かない（UIで薄く表示する）
+  inactive?: (s: Readonly<Settings>) => boolean;
 }
 
 export interface NumberParam extends ParamBase {
@@ -115,12 +119,19 @@ export const PARAMS: readonly ParamDef[] = [
     { value: 'box', label: 'シャッター' },
     { value: 'exp', label: '残像' },
   ] },
-  { kind: 'number', key: 'exposure', label: '露光時間', hint: '光を積算する時間。16.7ms（1/60秒）で1コマ分', group: 'camera', min: 0.2, max: 200, log: true, digits: 1, unit: 'ms' },
+  { kind: 'bool', key: 'exposureSync', label: '1コマに合わせる', hint: '露光時間を映像の1コマ（1 ÷ 映像のfps）にする。コマの間に写らない時間ができない。映像のfpsは「出力」で設定', group: 'camera' },
+  { kind: 'number', key: 'exposure', label: '露光時間', hint: '光を積算する時間。16.7ms（1/60秒）で1コマ分', group: 'camera', inactive: s => s.exposureSync, min: 0.2, max: 200, log: true, digits: 1, unit: 'ms' },
   { kind: 'number', key: 'glow', label: 'グロー', hint: 'ビーム周辺のにじみ。ヘイズやレンズでの散乱に相当', group: 'camera', min: 0, max: 3, digits: 2 },
   { kind: 'number', key: 'bright', label: '明るさ', hint: '露光量。上げると強く当たった部分が白く飛ぶ', group: 'camera', min: 0.1, max: 5, log: true, digits: 2 },
 
   { kind: 'enum', key: 'output', label: '出力サイズ', hint: '出力解像度。レーザーの描画範囲は常に中央の正方形', group: 'output',
     options: Object.keys(OUTPUT_SIZES).map(v => ({ value: v, label: v.replace('x', ' × ') })) },
+  { kind: 'enum', key: 'fps', label: '映像のfps', hint: '書き出し・録画のfpsと、「1コマに合わせる」露光の基準。OBSのブラウザソースも同じfpsにする', group: 'output', options: [
+    { value: '24', label: '24' },
+    { value: '30', label: '30' },
+    { value: '50', label: '50' },
+    { value: '60', label: '60' },
+  ] },
   { kind: 'bool', key: 'clip', label: '正方形でクリップ', hint: '中央の正方形の外を描かない', group: 'output' },
 
   { kind: 'number', key: 'timeScale', label: 'スロー', hint: '時間の進み方。1で実時間', group: 'debug', min: 0.0003, max: 1, log: true, digits: 4, unit: '×' },
@@ -133,6 +144,7 @@ export const DEFAULTS: Readonly<Settings> = {
   paused: false,
   mode: 'scan',
   output: '1920x1080',
+  fps: '60',
   clip: false,
   offX: 0,
   offY: 0,
@@ -148,6 +160,7 @@ export const DEFAULTS: Readonly<Settings> = {
   animSpeed: 1,
   timeScale: 1,
   exposureShape: 'box',
+  exposureSync: true,
   exposure: 1000 / 60,
   beam: 2.2,
   glow: 1,
@@ -159,10 +172,10 @@ export const DEFAULTS: Readonly<Settings> = {
 };
 
 export const PRESETS: Record<string, { label: string; title: string; values: Partial<Settings> }> = {
-  real: { label: '等速', title: '実機と同じ速さ', values: { timeScale: 1, exposureShape: 'box', exposure: 1000 / 60, pps: 30000, head: false, showBlank: false } },
-  slow50: { label: '1/50', title: 'スキャンを1/50の速さで観察', values: { timeScale: 0.02, exposureShape: 'exp', exposure: 8, head: true, showBlank: false } },
-  slow500: { label: '1/500', title: 'スキャンを1/500の速さで観察（ブランキング表示つき）', values: { timeScale: 0.002, exposureShape: 'exp', exposure: 1.5, head: true, showBlank: true } },
-  lowPps: { label: '低pps', title: '6kppsで描いたときのちらつき', values: { timeScale: 1, exposureShape: 'box', exposure: 1000 / 60, pps: 6000, head: false, showBlank: false } },
+  real: { label: '等速', title: '実機と同じ速さ', values: { timeScale: 1, exposureShape: 'box', exposureSync: true, pps: 30000, head: false, showBlank: false } },
+  slow50: { label: '1/50', title: 'スキャンを1/50の速さで観察', values: { timeScale: 0.02, exposureShape: 'exp', exposureSync: false, exposure: 8, head: true, showBlank: false } },
+  slow500: { label: '1/500', title: 'スキャンを1/500の速さで観察（ブランキング表示つき）', values: { timeScale: 0.002, exposureShape: 'exp', exposureSync: false, exposure: 1.5, head: true, showBlank: true } },
+  lowPps: { label: '低pps', title: '6kppsで描いたときのちらつき', values: { timeScale: 1, exposureShape: 'box', exposureSync: true, pps: 6000, head: false, showBlank: false } },
 };
 
 const byKey = new Map<string, ParamDef>(PARAMS.map(p => [p.key, p]));

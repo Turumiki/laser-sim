@@ -5,7 +5,7 @@ import { download, stamp } from './download';
 import { exportVideo } from './exporter';
 import type { Recorder } from './recorder';
 
-const EXPORT_TITLE = '今の設定で、頭から1コマずつ計算してMP4に書き出す（60fps、コマ落ちなし）';
+const EXPORT_TITLE = '今の設定で、頭から1コマずつ計算してMP4に書き出す（映像のfps、コマ落ちなし）';
 
 export function buildToolbar(root: HTMLElement, store: Store, recorder: Recorder, channel: string) {
   const play = el('button', { class: 'tb', title: '再生 / 一時停止 (Space)' });
@@ -36,7 +36,7 @@ export function buildToolbar(root: HTMLElement, store: Store, recorder: Recorder
       exp.classList.add('on');
       const blob = await exportVideo(s, {
         seconds,
-        fps: 60,
+        fps: Number(s.fps),
         signal: abort.signal,
         onProgress: r => { exp.textContent = `中止 ${Math.round(r * 100)}%`; },
       });
@@ -54,7 +54,7 @@ export function buildToolbar(root: HTMLElement, store: Store, recorder: Recorder
   const time = el('span', { class: 'time' }, '0:00.0');
   rec.addEventListener('click', () => {
     if (recorder.recording) recorder.stop();
-    else recorder.start(Number(dur.value), `laser_${store.get().pattern}`);
+    else recorder.start(Number(dur.value), `laser_${store.get().pattern}`, Number(store.get().fps));
   });
 
   const openOut = el('button', { class: 'tb', title: '出力画面を別ウィンドウで開く' }, '出力を開く');

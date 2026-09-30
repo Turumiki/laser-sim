@@ -28,10 +28,10 @@ export class Recorder {
     return this.rec ? (performance.now() - this.t0) / 1000 : 0;
   }
 
-  start(seconds: number, name: string) {
+  start(seconds: number, name: string, fps: number) {
     const mime = TYPES.find(t => MediaRecorder.isTypeSupported(t));
     if (!mime) throw new Error('このブラウザは録画に対応していません');
-    const stream = this.canvas.captureStream(60);
+    const stream = this.canvas.captureStream(fps);
     const chunks: Blob[] = [];
     const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 40e6 });
     rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };

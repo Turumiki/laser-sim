@@ -38,8 +38,7 @@ export interface View {
 
 // スキャン再現：露光時間内に通った軌跡を、通った時間に比例したエネルギーで積む。
 // 遅く動いた所ほど明るく、図形が長いほど暗くなる（実機と同じ）
-export function scanInstances(out: Instances, sc: Scanner, s: Readonly<Settings>, v: View) {
-  const tau = s.exposure / 1000;
+export function scanInstances(out: Instances, sc: Scanner, s: Readonly<Settings>, v: View, tau: number) {
   const isExp = s.exposureShape === 'exp';
   const window = isExp ? tau * 5 : tau;
   const dt = 1 / s.pps;

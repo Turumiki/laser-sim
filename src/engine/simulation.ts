@@ -22,6 +22,13 @@ export class Simulation {
     else this.scanner.advance(scanDt, s.animSpeed);
   }
 
+  // 光を積算する時間（スキャナの時間で秒）
+  exposureTime(): number {
+    const s = this.store.get();
+    // 画面の更新間隔ではなく映像のfpsを基準にする（120Hzの画面でもOBSの60fpsと同じ見え方になるように）
+    return s.exposureSync ? s.timeScale / Number(s.fps) : s.exposure / 1000;
+  }
+
   // サーバーの時間軸に合わせる。大きくずれていれば飛ばし、小さければ少しずつ寄せる（動きが跳ねないように）
   syncAnim(target: number | null) {
     if (target === null) return;

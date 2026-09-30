@@ -87,7 +87,7 @@ startLoop(dt => {
   sim.update(dt);
   sim.syncAnim(sync.time.animNow());
   const s = store.get();
-  if (s.mode === 'scan') beams.fromScanner(sim.scanner, s);
+  if (s.mode === 'scan') beams.fromScanner(sim.scanner, s, sim.exposureTime());
   else beams.fromFrame(sim.currentFrame(), s);
   controls.update();
   composer.render();
