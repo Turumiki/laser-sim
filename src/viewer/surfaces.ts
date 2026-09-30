@@ -39,15 +39,17 @@ export class Surfaces {
     this.group.clear();
     if (kind === 'none') return;
 
-    const wall = new Mesh(new PlaneGeometry(60, 30), material);
+    // 壁や床は、ビームが端からはみ出さないよう距離に合わせて大きくする
+    const w = Math.max(60, distance * 8), h = Math.max(30, distance * 4);
+    const wall = new Mesh(new PlaneGeometry(w, h), material);
     wall.position.z = -distance - 0.01;
-    const floor = new Mesh(new PlaneGeometry(60, 60), material);
+    const floor = new Mesh(new PlaneGeometry(w, w), material);
     floor.rotation.x = -Math.PI / 2;
     floor.position.y = -FLOOR - 0.01;
     this.group.add(wall, floor);
 
     if (kind === 'corner') {
-      const side = new Mesh(new PlaneGeometry(60, 30), material);
+      const side = new Mesh(new PlaneGeometry(w, h), material);
       side.rotation.y = Math.PI / 2;
       side.position.x = -this.sideX() - 0.01;
       this.group.add(side);

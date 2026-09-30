@@ -56,7 +56,7 @@ document.body.prepend(renderer.domElement);
 const scene = new Scene();
 scene.background = new Color(0x030303);
 
-const camera = new PerspectiveCamera(50, 1, 0.05, 200);
+const camera = new PerspectiveCamera(50, 1, 0.05, 2000);
 camera.position.set(5, 1.6, 3);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(0, 0, -vs.distance / 2);
@@ -66,12 +66,21 @@ controls.enableDamping = true;
 const body = new Mesh(new BoxGeometry(0.4, 0.2, 0.5), new MeshBasicMaterial({ color: 0x1c1c1c }));
 body.position.z = 0.26;
 scene.add(body);
-const floor = new GridHelper(40, 40, 0x1a1a1a, 0x111111);
-floor.position.y = -2.2;
-scene.add(floor);
+let grid: GridHelper | null = null;
+// 床の目盛りは1m間隔。壁までの距離に合わせて広げる
+const placeGrid = () => {
+  if (grid) { scene.remove(grid); grid.dispose(); }
+  const size = Math.max(40, Math.ceil(vs.distance * 3));
+  grid = new GridHelper(size, Math.min(size, 300), 0x1a1a1a, 0x111111);
+  grid.position.y = -2.2;
+  scene.add(grid);
+};
 const surfaces = new Surfaces();
 scene.add(surfaces.group);
-const placeWall = () => surfaces.build(vs.target, vs.distance);
+const placeWall = () => {
+  surfaces.build(vs.target, vs.distance);
+  placeGrid();
+};
 placeWall();
 
 const beams = new Beams(rig, surfaces);
@@ -116,7 +125,7 @@ function buildRigPanel() {
   const rows: [Exclude<keyof ViewerSettings, 'target'>, string, number, number, number][] = [
     ['angle', '走査角', 10, 80, 1],
     ['haze', 'ヘイズ', 0.1, 5, 0.05],
-    ['distance', '壁までの距離', 2, 20, 0.5],
+    ['distance', '壁までの距離', 2, 100, 0.5],
     ['bloom', 'ブルーム', 0, 3, 0.05],
     ['smoke', 'スモーク', 0, 1, 0.05],
     ['grain', 'スモークの粒', 0.2, 2, 0.05],
