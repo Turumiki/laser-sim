@@ -17,7 +17,9 @@ export interface Settings {
   rotSpeed: number;
 
   pps: number;
-  lag: number;
+  scannerK: number;
+  damping: number;
+  colorShift: number;
   density: number;
   animSpeed: number;
   timeScale: number;
@@ -104,7 +106,9 @@ export const PARAMS: readonly ParamDef[] = [
     { value: 'scan', label: '実機' },
   ] },
   { kind: 'number', key: 'pps', label: 'pps', hint: '1秒あたりに出力する点の数。スキャナの性能はILDAテストパターンを描ける pps で表す', group: 'projector', min: 1000, max: 60000, digits: 0 },
-  { kind: 'number', key: 'lag', label: 'ガルバ遅れ', hint: 'ガルバノミラーの応答の遅れ（時定数）。大きいほど角が丸くなる', group: 'projector', min: 0, max: 1, digits: 2, unit: 'ms' },
+  { kind: 'number', key: 'scannerK', label: 'スキャナ性能', hint: 'ILDAテストパターンを正しく描ける pps（走査角8°）。低いほど角が丸くなり、円が小さくなる', group: 'projector', min: 5, max: 80, digits: 0, unit: 'kpps' },
+  { kind: 'number', key: 'damping', label: '減衰', hint: 'ミラーの減衰（ダンピング）。小さいと角で行き過ぎて揺れ（オーバーシュート）、大きいと角が丸くなる', group: 'projector', min: 0.2, max: 1.5, digits: 2 },
+  { kind: 'number', key: 'colorShift', label: 'カラーシフト', hint: '色（点灯・消灯を含む）を座標に対して遅らせる時間。ミラーの遅れに合わせる補正。合っていないと角や線の端で色がはみ出す', group: 'projector', min: -200, max: 500, digits: 0, unit: 'µs' },
   { kind: 'number', key: 'beam', label: 'ビーム径', hint: 'ビームの太さ。FHD換算のpx', group: 'projector', min: 0.5, max: 10, digits: 1, unit: 'px' },
 
   { kind: 'enum', key: 'exposureShape', label: '露光方式', hint: 'シャッター: 露光時間内の光を均等に積算する（カメラ）。残像: 古い光ほど暗くなる（目）', group: 'camera', options: [
@@ -136,7 +140,10 @@ export const DEFAULTS: Readonly<Settings> = {
   angle: 0,
   rotSpeed: 0,
   pps: 30000,
-  lag: 0.12,
+  scannerK: 30,
+  // 30Kのスキャナを30kppsでILDAテスト風に合わせた値（円が四角に接する）
+  damping: 0.6,
+  colorShift: 80,
   density: 0.025,
   animSpeed: 1,
   timeScale: 1,

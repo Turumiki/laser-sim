@@ -11,6 +11,7 @@ export function buildFrame(out: Frame, s: Readonly<Settings>, t: number) {
   out.clear();
   builder.reset(out, s.density);
   getPattern(s.pattern).draw(builder, t);
+  builder.closeLoop();
   if (out.length === 0) out.push(0, 0, false);
 
   const n = out.length;
@@ -32,8 +33,9 @@ export function buildFrame(out: Frame, s: Readonly<Settings>, t: number) {
       continue;
     }
     if (s.colorMode === 'rainbow') hsv((i / n + t * 0.1) % 1, rgb);
-    out.r[i] = rgb[0];
-    out.g[i] = rgb[1];
-    out.b[i] = rgb[2];
+    const l = out.l[i] / 255;
+    out.r[i] = rgb[0] * l;
+    out.g[i] = rgb[1] * l;
+    out.b[i] = rgb[2] * l;
   }
 }
