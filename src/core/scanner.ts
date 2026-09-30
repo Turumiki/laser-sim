@@ -116,7 +116,7 @@ export class Scanner {
     }
   }
 
-  // シミュレーションせずに時間だけ進める（理想の描画用）
+  // シミュレーションせずに時間だけ進める（ベクター表示用）
   advance(scanDt: number, animSpeed: number) {
     this.scanT += scanDt;
     this.animT += scanDt * animSpeed;
