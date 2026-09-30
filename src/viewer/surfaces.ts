@@ -1,5 +1,6 @@
 import {
-  BoxGeometry, CylinderGeometry, Group, Matrix4, Mesh, MeshBasicMaterial, PlaneGeometry, SphereGeometry, Vector3,
+  BoxGeometry, BufferAttribute, BufferGeometry, CylinderGeometry, DoubleSide, Group, LineBasicMaterial, LineSegments, Matrix4,
+  Mesh, MeshBasicMaterial, PlaneGeometry, SphereGeometry, Vector3,
 } from 'three';
 
 export type TargetKind = 'wall' | 'sphere' | 'cube' | 'cylinder' | 'corner' | 'hall' | 'arena' | 'none';
@@ -16,16 +17,80 @@ export const TARGETS: readonly { id: TargetKind; label: string }[] = [
 ];
 
 // 会場の大きさ（m）。実際の会場を参考にしたおおよその値
-// floor: プロジェクターの床からの高さ、depth: 選んだときの奥行き（壁までの距離）
-export interface Room { width: number; height: number; floor: number; depth: number }
+// floor: プロジェクターの床からの高さ、depth: 選んだときの奥行き（壁までの距離）、
+// stage: プロジェクターより後ろ（ステージ側）の奥行き、stands: 客席の段（アリーナのスタンド）
+export interface Room {
+  width: number;
+  height: number;
+  floor: number;
+  depth: number;
+  stage: number;
+  stands?: { inset: number; height: number };
+}
 export const ROOMS: Partial<Record<TargetKind, Room>> = {
-  // 2000席くらいのホール。プロジェクターはステージ上
-  hall: { width: 30, height: 16, floor: 3, depth: 45 },
-  // 大きめの屋内アリーナ。プロジェクターはトラス上
-  arena: { width: 70, height: 30, floor: 5, depth: 110 },
+  // 2000席くらいのホール。プロジェクターはステージの前の方
+  hall: { width: 30, height: 16, floor: 3, depth: 45, stage: 12 },
+  // 大きめの屋内アリーナ。プロジェクターはトラス上。左右と奥にスタンド
+  arena: { width: 70, height: 30, floor: 5, depth: 110, stage: 18, stands: { inset: 12, height: 12 } },
 };
 const DEFAULT_FLOOR = 2.2;
 const material = new MeshBasicMaterial({ color: 0x161616 });
+const roomMaterial = new MeshBasicMaterial({ color: 0x161616, side: DoubleSide });
+const standMaterial = new MeshBasicMaterial({ color: 0x1d1d1d, side: DoubleSide });
+// 暗い会場でも形が分かるよう、面の縁に薄く線を引く
+const edgeMaterial = new LineBasicMaterial({ color: 0x333333 });
+
+// 長方形の面。点 = p + a*u + b*v（0≦a,b≦1、u と v は直交）
+interface Quad { p: number[]; u: number[]; v: number[]; stand?: boolean }
+
+const dot = (a: readonly number[], b: readonly number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross = (a: number[], b: number[]) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+
+// 会場を長方形の組み合わせで作る。見た目と当たり判定に同じものを使う
+function roomQuads(r: Room, depth: number): Quad[] {
+  const y0 = -r.floor, y1 = r.height - r.floor, z0 = r.stage, z1 = -depth;
+  const xl = -r.width / 2, W = r.width, H = r.height, L = z1 - z0;
+  const q: Quad[] = [
+    { p: [xl, y1, z0], u: [W, 0, 0], v: [0, 0, L] },
+    { p: [xl, y0, z0], u: [W, 0, 0], v: [0, H, 0] },
+  ];
+  const s = r.stands;
+  if (!s) {
+    q.push(
+      { p: [xl, y0, z0], u: [W, 0, 0], v: [0, 0, L] },
+      { p: [xl, y0, z0], u: [0, 0, L], v: [0, H, 0] },
+      { p: [-xl, y0, z0], u: [0, 0, L], v: [0, H, 0] },
+      { p: [xl, y0, z1], u: [W, 0, 0], v: [0, H, 0] },
+    );
+    return q;
+  }
+  // スタンド付き：床は内側だけ。左右と奥に斜めの客席、その上に壁
+  const i = s.inset, sh = s.height, ys = y0 + sh;
+  q.push(
+    { p: [xl + i, y0, z0], u: [W - 2 * i, 0, 0], v: [0, 0, L + i] },
+    { p: [xl + i, y0, z0], u: [0, 0, L], v: [-i, sh, 0], stand: true },
+    { p: [-xl - i, y0, z0], u: [0, 0, L], v: [i, sh, 0], stand: true },
+    { p: [xl, y0, z1 + i], u: [W, 0, 0], v: [0, sh, -i], stand: true },
+    { p: [xl, ys, z0], u: [0, 0, L], v: [0, H - sh, 0] },
+    { p: [-xl, ys, z0], u: [0, 0, L], v: [0, H - sh, 0] },
+    { p: [xl, ys, z1], u: [W, 0, 0], v: [0, H - sh, 0] },
+  );
+  return q;
+}
+
+function quadMesh(q: Quad) {
+  const { p, u, v } = q;
+  const c = (a: number, b: number) => [p[0] + u[0] * a + v[0] * b, p[1] + u[1] * a + v[1] * b, p[2] + u[2] * a + v[2] * b];
+  const pts = [c(0, 0), c(1, 0), c(1, 1), c(0, 0), c(1, 1), c(0, 1)].flat();
+  const geo = new BufferGeometry();
+  geo.setAttribute('position', new BufferAttribute(new Float32Array(pts), 3));
+  const edges = new BufferGeometry();
+  edges.setAttribute('position', new BufferAttribute(new Float32Array(
+    [c(0, 0), c(1, 0), c(1, 0), c(1, 1), c(1, 1), c(0, 1), c(0, 1), c(0, 0)].flat()), 3));
+  const g = new Group();
+  g.add(new Mesh(geo, q.stand ? standMaterial : roomMaterial), new LineSegments(edges, edgeMaterial));
+  return g;
+}
 
 // ビームが当たる物。プロジェクターは原点で -z 方向を向いている。
 // 毎フレーム数千本を調べるので、汎用の当たり判定ではなく形ごとに式で解く
@@ -34,6 +99,7 @@ export class Surfaces {
   private kind: TargetKind = 'wall';
   private d = 8;
   private room: Room | null = null;
+  private quads: Quad[] = [];
   // プロジェクターから床までの高さ
   floor = DEFAULT_FLOOR;
   // 物体の置き場所（壁の手前）と大きさ
@@ -52,7 +118,13 @@ export class Surfaces {
     this.center = distance * 0.72;
     this.size = distance * 0.16;
     this.group.clear();
+    this.quads = [];
     if (kind === 'none') return;
+    if (this.room) {
+      this.quads = roomQuads(this.room, distance);
+      for (const q of this.quads) this.group.add(quadMesh(q));
+      return;
+    }
 
     // 壁や床は、ビームが端からはみ出さないよう距離に合わせて大きくする
     const w = Math.max(60, distance * 8), h = Math.max(30, distance * 4);
@@ -62,20 +134,6 @@ export class Surfaces {
     floor.rotation.x = -Math.PI / 2;
     floor.position.y = -this.floor - 0.01;
     this.group.add(wall, floor);
-
-    if (this.room) {
-      const { width, height } = this.room;
-      const ceil = new Mesh(new PlaneGeometry(width, w), material);
-      ceil.rotation.x = Math.PI / 2;
-      ceil.position.y = height - this.floor + 0.01;
-      const left = new Mesh(new PlaneGeometry(w, h), material);
-      left.rotation.y = Math.PI / 2;
-      left.position.x = -width / 2 - 0.01;
-      const right = new Mesh(new PlaneGeometry(w, h), material);
-      right.rotation.y = -Math.PI / 2;
-      right.position.x = width / 2 + 0.01;
-      this.group.add(ceil, left, right);
-    }
 
     if (kind === 'corner') {
       const side = new Mesh(new PlaneGeometry(w, h), material);
@@ -110,6 +168,7 @@ export class Surfaces {
   // 点 o から方向 d へ飛ぶ光が最初に当たる所。o + d * t の t を返す（何にも当たらなければ Infinity）
   hit(o: readonly number[], d: readonly number[]): number {
     if (this.kind === 'none') return Infinity;
+    if (this.room) return this.hitQuads(o, d);
     const [ox, oy, oz] = o, [dx, dy, dz] = d;
     const plane = (p: number, v: number, target: number) => {
       if (Math.abs(v) < 1e-9) return Infinity;
@@ -118,10 +177,6 @@ export class Surfaces {
     };
     let t = plane(oz, dz, -this.d);
     t = Math.min(t, plane(oy, dy, -this.floor));
-    if (this.room) {
-      const { width, height } = this.room;
-      t = Math.min(t, plane(oy, dy, height - this.floor), plane(ox, dx, -width / 2), plane(ox, dx, width / 2));
-    }
     switch (this.kind) {
       case 'corner':
         t = Math.min(t, plane(ox, dx, -this.sideX()));
@@ -137,6 +192,21 @@ export class Surfaces {
         break;
     }
     return t;
+  }
+
+  private hitQuads(o: readonly number[], d: readonly number[]) {
+    let best = Infinity;
+    const w = [0, 0, 0];
+    for (const q of this.quads) {
+      const n = cross(q.u, q.v), den = dot(n, d);
+      if (Math.abs(den) < 1e-12) continue;
+      const t = (dot(n, q.p) - dot(n, o)) / den;
+      if (t <= 1e-6 || t >= best) continue;
+      for (let k = 0; k < 3; k++) w[k] = o[k] + d[k] * t - q.p[k];
+      const a = dot(w, q.u) / dot(q.u, q.u), b = dot(w, q.v) / dot(q.v, q.v);
+      if (a >= 0 && a <= 1 && b >= 0 && b <= 1) best = t;
+    }
+    return best;
   }
 
   private sphere(o: readonly number[], d: readonly number[]) {

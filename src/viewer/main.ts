@@ -35,11 +35,13 @@ const QUALITY: Record<Quality, { label: string; pixelRatio: () => number; sample
 // 複数台の並べ方。実際の現場でよくある置き方
 type Layout = 'parallel' | 'fan' | 'mirror';
 
-type View = 'audience' | 'side' | 'operator';
+type View = 'audience' | 'foh' | 'side' | 'stage';
 const VIEWS: { id: View; label: string }[] = [
   { id: 'audience', label: '客席' },
-  { id: 'side', label: '横' },
-  { id: 'operator', label: 'オペレーター席' },
+  // 照明やレーザーのオペレーターがいる卓（客席の中央、後ろ寄り）
+  { id: 'foh', label: 'FOH' },
+  { id: 'side', label: '横・俯瞰' },
+  { id: 'stage', label: 'ステージ後方' },
 ];
 const LAYOUTS: { id: Layout; label: string }[] = [
   { id: 'parallel', label: '平行' },
@@ -81,6 +83,7 @@ const vs: ViewerSettings = {
   quality: 'mid', haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, extinction: 0.3, target: 'wall', count: 1, spacing: 2, layout: 'parallel', view: 'audience',
   ...loadLocal<ViewerSettings>(RIG_KEY),
 };
+if (!VIEWS.some(v => v.id === vs.view)) vs.view = 'audience';
 const rig: Rig = { halfAngle: 0, distance: 0, haze: 0 };
 const applyRig = () => {
   // 走査角はレーザー機の設定（操作画面と共有）
@@ -109,7 +112,9 @@ const bodyGeo = new BoxGeometry(0.4, 0.2, 0.5), bodyMat = new MeshBasicMaterial(
 let grid: GridHelper | null = null;
 // 床の目盛りは1m間隔。壁までの距離に合わせて広げる
 const placeGrid = () => {
-  if (grid) { scene.remove(grid); grid.dispose(); }
+  if (grid) { scene.remove(grid); grid.dispose(); grid = null; }
+  // 会場の中では床そのものが見えるので、目盛りは出さない
+  if (ROOMS[vs.target]) return;
   const size = Math.max(40, Math.ceil(vs.distance * 3));
   grid = new GridHelper(size, Math.min(size, 300), 0x1a1a1a, 0x111111);
   grid.position.y = -surfaces.floor;
@@ -125,15 +130,28 @@ placeWall();
 
 // 視点。プロジェクターは原点で客席（-z）の方を向いている
 function placeCamera() {
-  const d = vs.distance, eye = -surfaces.floor + 1.6;
+  const d = vs.distance, floor = -surfaces.floor, eye = floor + 1.6;
   const room = ROOMS[vs.target];
+  const width = room?.width ?? d, height = room?.height ?? 8;
+  // ステージ（プロジェクター）の少し上を見る
+  const stage = () => controls.target.set(0, floor + height * 0.3, 0);
   if (vs.view === 'audience') {
-    // 客席の中ほどから、ステージ（プロジェクター）の方を見る
-    camera.position.set((room?.width ?? d) * 0.1, eye, -d * 0.7);
-    controls.target.set(0, (room?.height ?? 4) * 0.2, 0);
+    // 客席の前寄り、少し横から
+    camera.position.set(width * 0.12, eye, -d * 0.35);
+    stage();
+  } else if (vs.view === 'foh') {
+    // 客席の中央、奥行きの6割くらい。1mほどの台の上
+    camera.position.set(0, eye + 1, -d * 0.6);
+    stage();
   } else if (vs.view === 'side') {
-    camera.position.set(d * 0.55, 1.6, -d * 0.35);
-    controls.target.set(0, 0, -d * 0.45);
+    if (room) {
+      // 会場では、客席の後ろの高い角から全体を見下ろす
+      camera.position.set(width * 0.42, floor + height * 0.85, -d * 0.95);
+      controls.target.set(0, floor + height * 0.2, -d * 0.3);
+    } else {
+      camera.position.set(d * 0.55, 1.6, -d * 0.35);
+      controls.target.set(0, 0, -d * 0.45);
+    }
   } else {
     camera.position.set(0, 1.2, 3);
     controls.target.set(0, 0, -d / 2);
