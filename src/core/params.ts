@@ -37,11 +37,12 @@ export interface Settings {
 
 type KeysOf<T> = { [K in keyof Settings]: Settings[K] extends T ? K : never }[keyof Settings];
 
-export type GroupId = 'output' | 'transform' | 'scanner' | 'exposure' | 'beam' | 'color';
+export type GroupId = 'output' | 'transform' | 'time' | 'scanner' | 'exposure' | 'beam' | 'color';
 
 export const GROUPS: readonly { id: GroupId; label: string }[] = [
   { id: 'output', label: 'Output' },
   { id: 'transform', label: 'Transform' },
+  { id: 'time', label: 'Time' },
   { id: 'scanner', label: 'Scanner' },
   { id: 'exposure', label: 'Exposure' },
   { id: 'beam', label: 'Beam' },
@@ -95,8 +96,8 @@ export const PARAMS: readonly ParamDef[] = [
   { kind: 'number', key: 'pps', label: 'pps', group: 'scanner', min: 1000, max: 60000, digits: 0 },
   { kind: 'number', key: 'lag', label: 'ガルバ遅れ', group: 'scanner', min: 0, max: 1, digits: 2, unit: 'ms' },
   { kind: 'number', key: 'density', label: '点間隔', group: 'scanner', min: 0.004, max: 0.1, log: true, digits: 3 },
-  { kind: 'number', key: 'animSpeed', label: 'アニメ速度', group: 'scanner', min: 0, max: 4, digits: 2 },
-  { kind: 'number', key: 'timeScale', label: 'スロー', group: 'scanner', min: 0.0003, max: 1, log: true, digits: 4, unit: '×' },
+  { kind: 'number', key: 'animSpeed', label: 'アニメ速度', group: 'time', min: 0, max: 4, digits: 2 },
+  { kind: 'number', key: 'timeScale', label: 'スロー', group: 'time', min: 0.0003, max: 1, log: true, digits: 4, unit: '×' },
 
   { kind: 'enum', key: 'exposureShape', label: '方式', group: 'exposure', options: [
     { value: 'box', label: 'シャッター' },
