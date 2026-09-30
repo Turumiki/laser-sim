@@ -165,6 +165,8 @@ const applySmoke = () => {
 applySmoke();
 scene.add(beams.group);
 
+// スライダーの1をどのくらいの強さにするか
+const BLOOM_SCALE = 0.5;
 let composer: EffectComposer;
 let bloom: UnrealBloomPass;
 // 画質を変えたら、解像度とアンチエイリアスに合わせて作り直す
@@ -175,7 +177,8 @@ const buildComposer = () => {
   const target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: q.samples });
   composer = new EffectComposer(renderer, target);
   composer.addPass(new RenderPass(scene, camera));
-  bloom = new UnrealBloomPass(new Vector2(1, 1), vs.bloom, 0.5, 0.05);
+  // しきい値を高めにして、ビームの芯のように明るい所だけをにじませる（ヘイズ全体がかすまないように）
+  bloom = new UnrealBloomPass(new Vector2(1, 1), vs.bloom * BLOOM_SCALE, 0.35, 0.6);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
   beams.haze.uThick.value = q.thick;
@@ -288,7 +291,7 @@ function buildRigPanel() {
       vs[key] = Number(input.value);
       applyRig();
       placeWall();
-      bloom.strength = vs.bloom;
+      bloom.strength = vs.bloom * BLOOM_SCALE;
       applySmoke();
       placeProjectors();
       saveLocal(RIG_KEY, vs);
