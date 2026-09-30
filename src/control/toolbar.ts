@@ -7,8 +7,8 @@ export function buildToolbar(root: HTMLElement, store: Store, recorder: Recorder
   const play = el('button', { class: 'tb', title: '再生 / 一時停止 (Space)' });
   play.addEventListener('click', () => store.set({ paused: !store.get().paused }));
 
-  const clean = el('button', { class: 'tb' }, 'クリーン');
-  const scan = el('button', { class: 'tb' }, 'スキャン');
+  const clean = el('button', { class: 'tb', title: '理想的な機材として描く（ちらつきや遅れなし）' }, '理想');
+  const scan = el('button', { class: 'tb', title: 'ppsやミラーの遅れを再現して描く' }, '実機');
   clean.addEventListener('click', () => store.set({ mode: 'clean' }));
   scan.addEventListener('click', () => store.set({ mode: 'scan' }));
 

@@ -37,16 +37,17 @@ export interface Settings {
 
 type KeysOf<T> = { [K in keyof Settings]: Settings[K] extends T ? K : never }[keyof Settings];
 
-export type GroupId = 'output' | 'transform' | 'time' | 'scanner' | 'exposure' | 'beam' | 'color';
+// 実際のレーザーの流れに沿って分ける
+// 絵柄（ILDAデータに入るもの）→ レーザー機（描く機材）→ 見え方（目・カメラ・ヘイズ）→ 出力
+export type GroupId = 'content' | 'projector' | 'camera' | 'output' | 'debug';
 
 export const GROUPS: readonly { id: GroupId; label: string }[] = [
-  { id: 'output', label: 'Output' },
-  { id: 'transform', label: 'Transform' },
-  { id: 'time', label: 'Time' },
-  { id: 'scanner', label: 'Scanner' },
-  { id: 'exposure', label: 'Exposure' },
-  { id: 'beam', label: 'Beam' },
-  { id: 'color', label: 'Color' },
+  { id: 'content', label: '絵柄' },
+  { id: 'projector', label: 'レーザー機' },
+  { id: 'camera', label: '見え方' },
+  { id: 'output', label: '出力' },
+  // 検証用の表示。本番の素材には入れない
+  { id: 'debug', label: '観察用' },
 ];
 
 interface ParamBase { label: string; group: GroupId }
@@ -79,44 +80,43 @@ export const OUTPUT_SIZES: Record<string, readonly [number, number]> = {
 };
 
 export const PARAMS: readonly ParamDef[] = [
-  { kind: 'enum', key: 'mode', label: 'モード', group: 'output', options: [
-    { value: 'clean', label: 'クリーン' },
-    { value: 'scan', label: 'スキャン' },
-  ] },
-  { kind: 'enum', key: 'output', label: '出力サイズ', group: 'output',
-    options: Object.keys(OUTPUT_SIZES).map(v => ({ value: v, label: v.replace('x', ' × ') })) },
-  { kind: 'bool', key: 'clip', label: '正方形でクリップ', group: 'output' },
-
-  { kind: 'number', key: 'offX', label: '位置 X', group: 'transform', min: -1.78, max: 1.78, digits: 3 },
-  { kind: 'number', key: 'offY', label: '位置 Y', group: 'transform', min: -1, max: 1, digits: 3 },
-  { kind: 'number', key: 'size', label: 'サイズ', group: 'transform', min: 0.05, max: 1.5, digits: 2 },
-  { kind: 'number', key: 'angle', label: '角度', group: 'transform', min: 0, max: 360, digits: 0, unit: '°' },
-  { kind: 'number', key: 'rotSpeed', label: '回転', group: 'transform', min: -360, max: 360, digits: 0, unit: '°/s' },
-
-  { kind: 'number', key: 'pps', label: 'pps', group: 'scanner', min: 1000, max: 60000, digits: 0 },
-  { kind: 'number', key: 'lag', label: 'ガルバ遅れ', group: 'scanner', min: 0, max: 1, digits: 2, unit: 'ms' },
-  { kind: 'number', key: 'density', label: '点間隔', group: 'scanner', min: 0.004, max: 0.1, log: true, digits: 3 },
-  { kind: 'number', key: 'animSpeed', label: 'アニメ速度', group: 'time', min: 0, max: 4, digits: 2 },
-  { kind: 'number', key: 'timeScale', label: 'スロー', group: 'time', min: 0.0003, max: 1, log: true, digits: 4, unit: '×' },
-
-  { kind: 'enum', key: 'exposureShape', label: '方式', group: 'exposure', options: [
-    { value: 'box', label: 'シャッター' },
-    { value: 'exp', label: '残像' },
-  ] },
-  { kind: 'number', key: 'exposure', label: '露光時間', group: 'exposure', min: 0.2, max: 200, log: true, digits: 1, unit: 'ms' },
-
-  { kind: 'number', key: 'beam', label: '太さ', group: 'beam', min: 0.5, max: 10, digits: 1, unit: 'px' },
-  { kind: 'number', key: 'glow', label: 'グロー', group: 'beam', min: 0, max: 3, digits: 2 },
-  { kind: 'number', key: 'bright', label: '明るさ', group: 'beam', min: 0.1, max: 5, log: true, digits: 2 },
-  { kind: 'bool', key: 'head', label: '先頭の点', group: 'beam' },
-  { kind: 'bool', key: 'showBlank', label: 'ブランキング表示', group: 'beam' },
-
-  { kind: 'enum', key: 'colorMode', label: 'カラー', group: 'color', options: [
+  { kind: 'enum', key: 'colorMode', label: 'カラー', group: 'content', options: [
     { value: 'single', label: '単色' },
     { value: 'rainbow', label: 'レインボー' },
     { value: 'cycle', label: 'サイクル' },
   ] },
-  { kind: 'color', key: 'color', label: '色', group: 'color' },
+  { kind: 'color', key: 'color', label: '色', group: 'content' },
+  { kind: 'number', key: 'density', label: '点間隔', group: 'content', min: 0.004, max: 0.1, log: true, digits: 3 },
+  { kind: 'number', key: 'offX', label: '位置 X', group: 'content', min: -1.78, max: 1.78, digits: 3 },
+  { kind: 'number', key: 'offY', label: '位置 Y', group: 'content', min: -1, max: 1, digits: 3 },
+  { kind: 'number', key: 'size', label: 'サイズ', group: 'content', min: 0.05, max: 1.5, digits: 2 },
+  { kind: 'number', key: 'angle', label: '角度', group: 'content', min: 0, max: 360, digits: 0, unit: '°' },
+  { kind: 'number', key: 'rotSpeed', label: '回転', group: 'content', min: -360, max: 360, digits: 0, unit: '°/s' },
+  { kind: 'number', key: 'animSpeed', label: 'アニメ速度', group: 'content', min: 0, max: 4, digits: 2 },
+
+  { kind: 'enum', key: 'mode', label: '描画方式', group: 'projector', options: [
+    { value: 'clean', label: '理想' },
+    { value: 'scan', label: '実機' },
+  ] },
+  { kind: 'number', key: 'pps', label: 'pps', group: 'projector', min: 1000, max: 60000, digits: 0 },
+  { kind: 'number', key: 'lag', label: 'ガルバ遅れ', group: 'projector', min: 0, max: 1, digits: 2, unit: 'ms' },
+  { kind: 'number', key: 'beam', label: 'ビーム径', group: 'projector', min: 0.5, max: 10, digits: 1, unit: 'px' },
+
+  { kind: 'enum', key: 'exposureShape', label: '露光方式', group: 'camera', options: [
+    { value: 'box', label: 'シャッター' },
+    { value: 'exp', label: '残像' },
+  ] },
+  { kind: 'number', key: 'exposure', label: '露光時間', group: 'camera', min: 0.2, max: 200, log: true, digits: 1, unit: 'ms' },
+  { kind: 'number', key: 'glow', label: 'グロー', group: 'camera', min: 0, max: 3, digits: 2 },
+  { kind: 'number', key: 'bright', label: '明るさ', group: 'camera', min: 0.1, max: 5, log: true, digits: 2 },
+
+  { kind: 'enum', key: 'output', label: '出力サイズ', group: 'output',
+    options: Object.keys(OUTPUT_SIZES).map(v => ({ value: v, label: v.replace('x', ' × ') })) },
+  { kind: 'bool', key: 'clip', label: '正方形でクリップ', group: 'output' },
+
+  { kind: 'number', key: 'timeScale', label: 'スロー', group: 'debug', min: 0.0003, max: 1, log: true, digits: 4, unit: '×' },
+  { kind: 'bool', key: 'head', label: '先頭の点', group: 'debug' },
+  { kind: 'bool', key: 'showBlank', label: 'ブランキング表示', group: 'debug' },
 ];
 
 export const DEFAULTS: Readonly<Settings> = {

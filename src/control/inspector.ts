@@ -23,7 +23,7 @@ export function buildInspector(root: HTMLElement, store: Store) {
       saveLocal(CLOSED_KEY, [...closed]);
     });
 
-    if (g.id === 'time') rows.append(presetRow(store));
+    if (g.id === 'debug') rows.append(presetRow(store));
     for (const p of PARAMS.filter(p => p.group === g.id && !IN_TOOLBAR.has(p.key))) {
       const [row, update] = paramRow(p, store);
       rows.append(row);
