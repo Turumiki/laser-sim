@@ -30,7 +30,7 @@ type Quality = 'high' | 'mid' | 'low';
 const QUALITY: Record<Quality, { label: string; pixelRatio: () => number; samples: number; thick: number; procedural: number }> = {
   high: { label: 'High', pixelRatio: () => Math.min(devicePixelRatio, 2), samples: 4, thick: 1, procedural: 1 },
   mid: { label: 'Mid', pixelRatio: () => 1, samples: 0, thick: 0, procedural: 0 },
-  low: { label: 'Low', pixelRatio: () => 0.5, samples: 0, thick: 0, procedural: 0 },
+  low: { label: 'Low', pixelRatio: () => 0.75, samples: 0, thick: 0, procedural: 0 },
 };
 
 // 複数台の並べ方。実際の現場でよくある置き方
@@ -81,7 +81,8 @@ interface ViewerSettings {
 }
 const RIG_KEY = 'laser:viewer';
 const vs: ViewerSettings = {
-  quality: 'mid', haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, extinction: 0.3, target: 'wall', count: 1, spacing: 2, layout: 'parallel', view: 'audience',
+  // スマホのGPUは非力なので、初めて開いたときは軽い画質にする
+  quality: matchMedia('(pointer: coarse)').matches ? 'low' : 'mid', haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, extinction: 0.3, target: 'wall', count: 1, spacing: 2, layout: 'parallel', view: 'audience',
   ...loadLocal<ViewerSettings>(RIG_KEY),
 };
 if (!VIEWS.some(v => v.id === vs.view)) vs.view = 'audience';
@@ -189,6 +190,11 @@ const BLOOM_SCALE = 0.5;
 let composer: EffectComposer;
 let bloom: UnrealBloomPass;
 // 画質を変えたら、解像度とアンチエイリアスに合わせて作り直す
+// ブルームは画面全体を何段もぼかすので重い。Lowや強さ0のときは処理ごと止める
+const applyBloom = () => {
+  bloom.strength = vs.bloom * BLOOM_SCALE;
+  bloom.enabled = vs.bloom > 0 && vs.quality !== 'low';
+};
 const buildComposer = () => {
   const q = QUALITY[vs.quality] ?? QUALITY.mid;
   composer?.dispose();
@@ -199,6 +205,7 @@ const buildComposer = () => {
   // しきい値を高めにして、ビームの芯のように明るい所だけをにじませる（ヘイズ全体がかすまないように）
   bloom = new UnrealBloomPass(new Vector2(1, 1), vs.bloom * BLOOM_SCALE, 0.35, 0.6);
   composer.addPass(bloom);
+  applyBloom();
   composer.addPass(new OutputPass());
   beams.haze.uThick.value = q.thick;
   beams.haze.uProcedural.value = q.procedural;
@@ -262,7 +269,7 @@ function buildRigPanel() {
     buildComposer();
     saveLocal(RIG_KEY, vs);
   });
-  qualityRow.title = 'High: 高解像度とアンチエイリアス。Low: 半分の解像度で軽くする';
+  qualityRow.title = 'High: 高解像度・アンチエイリアス・細かいスモーク。Low: 解像度を下げ、ブルームなしで軽くする（スマホ向け）';
   qualityRow.append('画質', quality);
   panel.append(qualityRow);
 
@@ -322,7 +329,7 @@ function buildRigPanel() {
       vs[key] = Number(input.value);
       applyRig();
       placeWall();
-      bloom.strength = vs.bloom * BLOOM_SCALE;
+      applyBloom();
       applySmoke();
       placeProjectors();
       saveLocal(RIG_KEY, vs);
