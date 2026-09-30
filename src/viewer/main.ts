@@ -34,6 +34,13 @@ const QUALITY: Record<Quality, { label: string; pixelRatio: () => number; sample
 
 // 複数台の並べ方。実際の現場でよくある置き方
 type Layout = 'parallel' | 'fan' | 'mirror';
+
+type View = 'audience' | 'side' | 'operator';
+const VIEWS: { id: View; label: string }[] = [
+  { id: 'audience', label: '客席' },
+  { id: 'side', label: '横' },
+  { id: 'operator', label: 'オペレーター席' },
+];
 const LAYOUTS: { id: Layout; label: string }[] = [
   { id: 'parallel', label: '平行' },
   { id: 'fan', label: '扇' },
@@ -67,10 +74,11 @@ interface ViewerSettings {
   count: number;
   spacing: number;
   layout: Layout;
+  view: View;
 }
 const RIG_KEY = 'laser:viewer';
 const vs: ViewerSettings = {
-  quality: 'mid', haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, extinction: 0.3, target: 'wall', count: 1, spacing: 2, layout: 'parallel',
+  quality: 'mid', haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, extinction: 0.3, target: 'wall', count: 1, spacing: 2, layout: 'parallel', view: 'audience',
   ...loadLocal<ViewerSettings>(RIG_KEY),
 };
 const rig: Rig = { halfAngle: 0, distance: 0, haze: 0 };
@@ -91,9 +99,7 @@ const scene = new Scene();
 scene.background = new Color(0x030303);
 
 const camera = new PerspectiveCamera(50, 1, 0.05, 2000);
-camera.position.set(5, 1.6, 3);
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(0, 0, -vs.distance / 2);
 controls.enableDamping = true;
 
 // プロジェクター本体、床、壁
@@ -116,6 +122,25 @@ const placeWall = () => {
   placeGrid();
 };
 placeWall();
+
+// 視点。プロジェクターは原点で客席（-z）の方を向いている
+function placeCamera() {
+  const d = vs.distance, eye = -surfaces.floor + 1.6;
+  const room = ROOMS[vs.target];
+  if (vs.view === 'audience') {
+    // 客席の中ほどから、ステージ（プロジェクター）の方を見る
+    camera.position.set((room?.width ?? d) * 0.1, eye, -d * 0.7);
+    controls.target.set(0, (room?.height ?? 4) * 0.2, 0);
+  } else if (vs.view === 'side') {
+    camera.position.set(d * 0.55, 1.6, -d * 0.35);
+    controls.target.set(0, 0, -d * 0.45);
+  } else {
+    camera.position.set(0, 1.2, 3);
+    controls.target.set(0, 0, -d / 2);
+  }
+  controls.update();
+}
+placeCamera();
 
 const beams = new Beams(rig, surfaces);
 const placeProjectors = () => {
@@ -183,7 +208,7 @@ startLoop(dt => {
 
 function buildRigPanel() {
   const panel = document.getElementById('rig')!;
-  const rows: [Exclude<keyof ViewerSettings, 'target' | 'quality' | 'layout'>, string, number, number, number][] = [
+  const rows: [Exclude<keyof ViewerSettings, 'target' | 'quality' | 'layout' | 'view'>, string, number, number, number][] = [
     ['count', '台数', 1, 8, 1],
     ['spacing', '間隔', 0.5, 10, 0.5],
     ['haze', 'ヘイズ', 0.1, 5, 0.05],
@@ -229,15 +254,31 @@ function buildRigPanel() {
     if (room) {
       // 会場を選んだら、奥行きを合わせて客席からの視点にする
       vs.distance = room.depth;
-      camera.position.set(room.width * 0.2, -room.floor + 1.6, -room.depth * 0.7);
-      controls.target.set(0, room.height * 0.25, 0);
     }
     placeWall();
+    placeCamera();
     saveLocal(RIG_KEY, vs);
     if (room) buildRigPanel();
   });
   targetRow.append('投影先', select);
   panel.append(targetRow);
+
+  const viewRow = document.createElement('label');
+  const viewSel = document.createElement('select');
+  for (const v of VIEWS) viewSel.add(new Option(v.label, v.id));
+  viewSel.value = vs.view;
+  viewSel.addEventListener('change', () => {
+    vs.view = viewSel.value as View;
+    placeCamera();
+    saveLocal(RIG_KEY, vs);
+  });
+  // ドラッグで動かしたあと、選んでいる視点の位置に戻す
+  const back = document.createElement('button');
+  back.textContent = '戻す';
+  back.addEventListener('click', e => { e.preventDefault(); placeCamera(); });
+  viewRow.classList.add('with-button');
+  viewRow.append('視点', viewSel, back);
+  panel.append(viewRow);
   for (const [key, label, min, max, step] of rows) {
     const row = document.createElement('label');
     const input = Object.assign(document.createElement('input'), { type: 'range', min, max, step, value: vs[key] });
