@@ -39,8 +39,6 @@ export interface Settings {
   bright: number;
   head: boolean;
   showBlank: boolean;
-  rolling: boolean;
-  readout: number;
 
   colorMode: ColorMode;
   color: string;
@@ -130,8 +128,6 @@ export const PARAMS: readonly ParamDef[] = [
   ] },
   { kind: 'bool', key: 'exposureSync', label: '1コマに合わせる', hint: '露光時間を映像の1コマ（1 ÷ 映像のfps）にする。コマの間に写らない時間ができない。映像のfpsは「出力」で設定', group: 'camera' },
   { kind: 'number', key: 'exposure', label: '露光時間', hint: '光を積算する時間。16.7ms（1/60秒）で1コマ分', group: 'camera', inactive: s => s.exposureSync, min: 0.2, max: 200, log: true, digits: 1, unit: 'ms' },
-  { kind: 'bool', key: 'rolling', label: 'ローリング', hint: 'ローリングシャッター。スマホや一般的なビデオカメラのように、画面を上の行から順に時間をずらして撮る。速く動くレーザーは形が曲がったり波打ったりして写る。スキャンのときだけ効く。クッキー用では使わない', group: 'camera', inactive: s => s.mode !== 'scan' || s.look === 'source' },
-  { kind: 'number', key: 'readout', label: '読み出し時間', hint: '画面の上から下まで読み出すのにかかる時間。スマホでだいたい10〜30ms', group: 'camera', inactive: s => !s.rolling || s.mode !== 'scan' || s.look === 'source', min: 1, max: 40, digits: 1, unit: 'ms' },
   { kind: 'bool', key: 'eye', label: '目の感度', hint: '色ごとの見かけの明るさ。人の目は緑に敏感で、同じ出力でも赤や青は暗く見える（一般的なRGB機: 赤638nm・緑520nm・青450nm）。Unityに渡す映像は、狙った色のままにしたいならオフ', group: 'camera' },
   { kind: 'number', key: 'glow', label: 'グロー', hint: 'ビーム周辺のにじみ。ヘイズやレンズでの散乱に相当。クッキー用では使わない', group: 'camera', inactive: s => s.look === 'source', min: 0, max: 3, digits: 2 },
   { kind: 'number', key: 'bright', label: '明るさ', hint: '露光量。上げると強く当たった部分が白く飛ぶ', group: 'camera', min: 0.1, max: 5, log: true, digits: 2 },
@@ -187,8 +183,6 @@ export const DEFAULTS: Readonly<Settings> = {
   bright: 1,
   head: false,
   showBlank: false,
-  rolling: false,
-  readout: 16,
   colorMode: 'single',
   color: '#00ff40',
 };

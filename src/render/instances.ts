@@ -3,8 +3,8 @@ import type { Scanner } from '../core/scanner';
 import type { Settings } from '../core/params';
 import { EYE_GAIN, pincushion } from '../core/color';
 
-// 1本の線分 = x0 y0 x1 y1 / エネルギー r g b / グローの有無 / 古さ（露光時間を1とする。ローリングシャッター用）
-export const STRIDE = 10;
+// 1本の線分 = x0 y0 x1 y1 / エネルギー r g b / グローの有無
+export const STRIDE = 9;
 const SQRT_2PI = 2.5066283;
 
 export class Instances {
@@ -15,7 +15,7 @@ export class Instances {
     this.count = 0;
   }
 
-  push(x0: number, y0: number, x1: number, y1: number, e: number, r: number, g: number, b: number, glow: number, age = 0) {
+  push(x0: number, y0: number, x1: number, y1: number, e: number, r: number, g: number, b: number, glow: number) {
     if ((this.count + 1) * STRIDE > this.data.length) {
       const next = new Float32Array(this.data.length * 2);
       next.set(this.data);
@@ -23,7 +23,7 @@ export class Instances {
     }
     const d = this.data, o = this.count++ * STRIDE;
     d[o] = x0; d[o + 1] = y0; d[o + 2] = x1; d[o + 3] = y1;
-    d[o + 4] = e; d[o + 5] = r; d[o + 6] = g; d[o + 7] = b; d[o + 8] = glow; d[o + 9] = age;
+    d[o + 4] = e; d[o + 5] = r; d[o + 6] = g; d[o + 7] = b; d[o + 8] = glow;
   }
 }
 
@@ -60,11 +60,9 @@ const ONE: readonly [number, number, number] = [1, 1, 1];
 
 // スキャン再現：露光時間内に通った軌跡を、通った時間に比例したエネルギーで積む。
 // 遅く動いた所ほど明るく、図形が長いほど暗くなる（実機と同じ）
-// roll: ローリングシャッターの読み出し時間（露光時間を1とする）。0なら全体を同時に撮る。
-//   行ごとに撮る時間帯がずれるので、どの時間の光を積むかはGPU側で行ごとに決める
-export function scanInstances(out: Instances, sc: Scanner, s: Readonly<Settings>, v: View, tau: number, roll = 0) {
+export function scanInstances(out: Instances, sc: Scanner, s: Readonly<Settings>, v: View, tau: number) {
   const isExp = s.exposureShape === 'exp';
-  const window = (isExp ? tau * 5 : tau) + roll * tau;
+  const window = isExp ? tau * 5 : tau;
   const dt = 1 / s.pps;
   const map = mapper(s, v);
   const [gr, gg, gb] = s.eye ? EYE_GAIN : ONE;
@@ -81,12 +79,12 @@ export function scanInstances(out: Instances, sc: Scanner, s: Readonly<Settings>
     p = map(sc.x[i], sc.y[i]);
     const xi = p.x, yi = p.y;
     if (sc.on[i]) {
-      const age = (sc.scanT - sc.t[i]) / tau;
-      const w = roll || !isExp ? 1 : Math.exp(-age);
+      const age = sc.scanT - sc.t[i];
+      const w = isExp ? Math.exp(-age / tau) : 1;
       const e = w * dt / tau * v.lref;
-      out.push(xj, yj, xi, yi, e, sc.r[i] / 255 * gr, sc.g[i] / 255 * gg, sc.b[i] / 255 * gb, 1, age);
+      out.push(xj, yj, xi, yi, e, sc.r[i] / 255 * gr, sc.g[i] / 255 * gg, sc.b[i] / 255 * gb, 1);
     } else if (s.showBlank) {
-      out.push(xj, yj, xi, yi, 0.25 * Math.hypot(xi - xj, yi - yj), 0.6, 0.6, 0.6, 0, (sc.scanT - sc.t[i]) / tau);
+      out.push(xj, yj, xi, yi, 0.25 * Math.hypot(xi - xj, yi - yj), 0.6, 0.6, 0.6, 0);
     }
     xj = xi;
     yj = yi;

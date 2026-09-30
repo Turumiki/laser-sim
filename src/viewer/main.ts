@@ -116,6 +116,10 @@ interface ViewerSettings {
   extinction: number;
   // 映像の描き方で、遠くの減衰を弱める量
   flat: number;
+  // ローリングシャッター（撮っているカメラが、画面を上の行から順に時間をずらして撮る）
+  rolling: boolean;
+  // 上から下まで読み出すのにかかる時間（ms）
+  readout: number;
   target: TargetKind;
   count: number;
   spacing: number;
@@ -127,7 +131,7 @@ const RIG_KEY = 'laser:viewer';
 const vs: ViewerSettings = {
   // スマホのGPUは非力なので、初めて開いたときは軽い画質にする
   channels: [channel],
-  quality: matchMedia('(pointer: coarse)').matches ? 'low' : 'mid', haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, extinction: 0.3, flat: 0, target: 'wall', count: 1, spacing: 2, layout: 'parallel', view: 'audience', render: 'vector',
+  quality: matchMedia('(pointer: coarse)').matches ? 'low' : 'mid', haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, extinction: 0.3, flat: 0, rolling: false, readout: 16, target: 'wall', count: 1, spacing: 2, layout: 'parallel', view: 'audience', render: 'vector',
   ...loadLocal<ViewerSettings>(RIG_KEY),
 };
 if (!VIEWS.some(v => v.id === vs.view)) vs.view = 'audience';
@@ -152,7 +156,7 @@ if (params.has('ch')) vs.channels = [channel];
 // 以前はカンマ区切りの文字で持っていた
 if (typeof vs.channels === 'string') vs.channels = (vs.channels as string).split(',').map(t => t.trim());
 useChannels();
-const rig: Rig = { distance: 0, haze: 0 };
+const rig: Rig = { distance: 0, haze: 0, roll: 0 };
 const applyRig = () => {
   rig.distance = vs.distance;
   rig.haze = vs.haze;
@@ -389,6 +393,11 @@ startLoop(dt => {
       frame: s.mode === 'scan' ? null : f.sim.currentFrame(),
     });
   }
+  // ローリングシャッター。露光時間とスローは全チャンネル共通なので、どのチャンネルで計っても同じ
+  const f0 = feedOrder[0], s0 = f0?.store.get();
+  rig.roll = vs.rolling && s0 ? vs.readout / 1000 * s0.timeScale / f0.sim.exposureTime() : 0;
+  beams.haze.uRoll.value.set(rig.roll, s0?.exposureShape === 'exp' ? 1 : 0);
+  renderer.getDrawingBufferSize(beams.haze.uRes.value);
   const video = vs.render === 'video';
   beams.group.visible = !video;
   volume.enabled = video;
@@ -413,7 +422,7 @@ startLoop(dt => {
 
 function buildRigPanel() {
   const panel = document.getElementById('rig')!;
-  const rows: [Exclude<keyof ViewerSettings, 'target' | 'quality' | 'layout' | 'view' | 'channels' | 'render'>, string, number, number, number][] = [
+  const rows: [Exclude<keyof ViewerSettings, 'target' | 'quality' | 'layout' | 'view' | 'channels' | 'render' | 'rolling'>, string, number, number, number][] = [
     ['count', '台数', 1, 8, 1],
     ['spacing', '間隔', 0.5, 10, 0.5],
     ['haze', 'ヘイズ', 0.1, 5, 0.05],
@@ -423,6 +432,7 @@ function buildRigPanel() {
     ['grain', 'むらの細かさ', 0.2, 2, 0.05],
     ['extinction', 'ヘイズの減衰', 0, 1, 0.05],
     ['flat', '距離減衰の補正（クッキー）', 0, 1, 0.05],
+    ['readout', '読み出し時間 ms', 1, 40, 1],
   ];
   panel.innerHTML = '<h3>3D</h3>';
   const qualityRow = document.createElement('label');
@@ -501,6 +511,15 @@ function buildRigPanel() {
   viewRow.append('視点', viewSel, back);
   panel.append(viewRow);
   for (const [key, label, min, max, step] of rows) {
+    if (key === 'readout') {
+      // 撮っているカメラの性質。スキャンのチャンネルを「点のデータから直接」で描いているときだけ効く
+      const rollRow = document.createElement('label');
+      const box = Object.assign(document.createElement('input'), { type: 'checkbox', checked: vs.rolling });
+      box.addEventListener('change', () => { vs.rolling = box.checked; saveLocal(RIG_KEY, vs); });
+      rollRow.title = 'スマホや一般的なビデオカメラで撮ったときの写り方。画面を上の行から順に時間をずらして撮るので、速く動くレーザーは曲がったり縞になったりして写る。スキャンのチャンネルを「点のデータから直接」で描いているときだけ効く';
+      rollRow.append('ローリング', box);
+      panel.append(rollRow);
+    }
     const row = document.createElement('label');
     const input = Object.assign(document.createElement('input'), { type: 'range', min, max, step, value: vs[key] });
     const out = document.createElement('output');

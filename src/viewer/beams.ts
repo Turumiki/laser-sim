@@ -1,6 +1,6 @@
 import {
-  AdditiveBlending, BufferAttribute, BufferGeometry, DoubleSide, Group, LineBasicMaterial, LineSegments, Mesh,
-  ShaderMaterial, type Data3DTexture,
+  AdditiveBlending, BufferAttribute, BufferGeometry, DoubleSide, Group, LineSegments, Mesh,
+  ShaderMaterial, Vector2, type Data3DTexture,
 } from 'three';
 import type { Frame } from '../core/frame';
 import type { Settings } from '../core/params';
@@ -16,6 +16,8 @@ export interface Rig {
   distance: number;
   // ヘイズの濃さ（ビームの明るさ）
   haze: number;
+  // ローリングシャッターの読み出し時間（露光時間を1とする）。0なら全体を同時に撮る
+  roll: number;
 }
 
 // 1台ぶんの描く材料。チャンネルごとに設定とシミュレーションが違う
@@ -42,13 +44,17 @@ class Buffer {
   pos: Float32Array;
   col: Float32Array;
   org: Float32Array;
+  age: Float32Array;
   count = 0;
+  // これから打つ頂点の光の古さ（露光時間を1とする。時刻がないときは -1）
+  curAge = -1;
   // これから打つ頂点の光源（プロジェクター）の位置
   origin: readonly number[] = [0, 0, 0];
   readonly geo = new BufferGeometry();
   private posAttr: BufferAttribute;
   private colAttr: BufferAttribute;
   private orgAttr: BufferAttribute;
+  private ageAttr: BufferAttribute;
   private per: number;
 
   constructor(max: number, vertsPer: number) {
@@ -56,12 +62,15 @@ class Buffer {
     this.pos = new Float32Array(max * vertsPer * 3);
     this.col = new Float32Array(max * vertsPer * 3);
     this.org = new Float32Array(max * vertsPer * 3);
+    this.age = new Float32Array(max * vertsPer);
     this.posAttr = new BufferAttribute(this.pos, 3);
     this.colAttr = new BufferAttribute(this.col, 3);
     this.orgAttr = new BufferAttribute(this.org, 3);
+    this.ageAttr = new BufferAttribute(this.age, 1);
     this.geo.setAttribute('position', this.posAttr);
     this.geo.setAttribute('color', this.colAttr);
     this.geo.setAttribute('aOrigin', this.orgAttr);
+    this.geo.setAttribute('aAge', this.ageAttr);
   }
 
   full() {
@@ -73,15 +82,16 @@ class Buffer {
     this.pos[o] = x; this.pos[o + 1] = y; this.pos[o + 2] = z;
     this.col[o] = r; this.col[o + 1] = g; this.col[o + 2] = b;
     this.org[o] = this.origin[0]; this.org[o + 1] = this.origin[1]; this.org[o + 2] = this.origin[2];
+    this.age[this.count * this.per + k] = this.curAge;
   }
 
   // 使った分だけGPUに送る（バッファ全体を毎フレーム送ると重い）
   commit() {
     const n = this.count * this.per;
     this.geo.setDrawRange(0, n);
-    for (const attr of [this.posAttr, this.colAttr, this.orgAttr]) {
+    for (const attr of [this.posAttr, this.colAttr, this.orgAttr, this.ageAttr]) {
       attr.clearUpdateRanges();
-      attr.addUpdateRange(0, n * 3);
+      attr.addUpdateRange(0, n * attr.itemSize);
       attr.needsUpdate = true;
     }
   }
@@ -172,10 +182,31 @@ export interface HazeUniforms {
   uThick: { value: number };
   uNoise: { value: Data3DTexture };
   uProcedural: { value: number };
+  // ローリングシャッター: x = 読み出し時間（露光時間を1とする。0で無効）, y = 1 なら残像（指数）
+  uRoll: { value: Vector2 };
+  // 描画先の大きさ（px）。どの行を撮っているかを出すのに使う
+  uRes: { value: Vector2 };
 }
+
+// カメラは上の行ほど早く撮り終わる（ローリングシャッター）。その行が撮っている時間帯に、この光が入るか。
+// 古さが負（時刻のないベクター表示）なら常に写る
+const SHUTTER_GLSL = `
+  uniform vec2 uRoll;
+  uniform vec2 uRes;
+  varying float vAge;
+  float shutter() {
+    if (uRoll.x <= 0.0 || vAge < 0.0) return 1.0;
+    float row = 1.0 - gl_FragCoord.y / uRes.y;
+    float a = vAge - (1.0 - row) * uRoll.x;
+    if (a < 0.0) return 0.0;
+    return uRoll.y > 0.5 ? exp(-a) : step(a, 1.0);
+  }
+`;
 
 const beamVertex = `
   attribute vec3 aOrigin;
+  attribute float aAge;
+  varying float vAge;
   varying vec3 vColor;
   varying vec3 vView;
   varying vec3 vWorld;
@@ -183,6 +214,7 @@ const beamVertex = `
   varying vec3 vEye;
   void main() {
     vColor = color;
+    vAge = aAge;
     vWorld = (modelMatrix * vec4(position, 1.0)).xyz;
     vRel = vWorld - aOrigin;
     vEye = vWorld - cameraPosition;
@@ -197,7 +229,7 @@ const sheetMaterial = (uniforms: HazeUniforms) => new ShaderMaterial({
   side: DoubleSide,
   uniforms: { ...uniforms },
   vertexShader: beamVertex,
-  fragmentShader: SMOKE_GLSL + `
+  fragmentShader: SMOKE_GLSL + SHUTTER_GLSL + `
     varying vec3 vColor;
     varying vec3 vView;
     varying vec3 vWorld;
@@ -208,7 +240,7 @@ const sheetMaterial = (uniforms: HazeUniforms) => new ShaderMaterial({
       float c = abs(dot(n, normalize(-vView)));
       vec3 viewDir = normalize(vEye);
       float s = smoke(vWorld, viewDir, length(vRel));
-      gl_FragColor = vec4(vColor / max(c, 0.12) * s * airlight(vRel, viewDir) * spread(vRel), 1.0);
+      gl_FragColor = vec4(vColor / max(c, 0.12) * s * airlight(vRel, viewDir) * spread(vRel) * shutter(), 1.0);
     }`,
 });
 
@@ -216,14 +248,34 @@ const rayMaterial = (uniforms: HazeUniforms) => new ShaderMaterial({
   ...additive,
   uniforms: { ...uniforms },
   vertexShader: beamVertex,
-  fragmentShader: SMOKE_GLSL + `
+  fragmentShader: SMOKE_GLSL + SHUTTER_GLSL + `
     varying vec3 vColor;
     varying vec3 vWorld;
     varying vec3 vRel;
     varying vec3 vEye;
     void main() {
       vec3 viewDir = normalize(vEye);
-      gl_FragColor = vec4(vColor * smoke(vWorld, viewDir, length(vRel)) * airlight(vRel, viewDir), 1.0);
+      gl_FragColor = vec4(vColor * smoke(vWorld, viewDir, length(vRel)) * airlight(vRel, viewDir) * shutter(), 1.0);
+    }`,
+});
+
+// 物に当たった所の光
+const spotMaterial = (uniforms: HazeUniforms) => new ShaderMaterial({
+  ...additive,
+  uniforms: { uRoll: uniforms.uRoll, uRes: uniforms.uRes },
+  vertexShader: `
+    attribute float aAge;
+    varying float vAge;
+    varying vec3 vColor;
+    void main() {
+      vColor = color;
+      vAge = aAge;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }`,
+  fragmentShader: SHUTTER_GLSL + `
+    varying vec3 vColor;
+    void main() {
+      gl_FragColor = vec4(vColor * shutter(), 1.0);
     }`,
 });
 
@@ -248,7 +300,7 @@ export class Beams {
   private gain: readonly number[] = [1, 1, 1];
 
   private surfaces: Surfaces;
-  readonly haze: HazeUniforms = { uTime: { value: 0 }, uSmoke: { value: 0.6 }, uGrain: { value: 0.6 }, uExt: { value: 0.015 }, uThick: { value: 1 }, uNoise: { value: smokeTexture() }, uProcedural: { value: 0 } };
+  readonly haze: HazeUniforms = { uTime: { value: 0 }, uSmoke: { value: 0.6 }, uGrain: { value: 0.6 }, uExt: { value: 0.015 }, uThick: { value: 1 }, uNoise: { value: smokeTexture() }, uProcedural: { value: 0 }, uRoll: { value: new Vector2() }, uRes: { value: new Vector2(1, 1) } };
 
   constructor(rig: Rig, surfaces: Surfaces) {
     this.rig = rig;
@@ -256,7 +308,7 @@ export class Beams {
     this.group.add(
       new Mesh(this.sheets.geo, sheetMaterial(this.haze)),
       new LineSegments(this.rays.geo, rayMaterial(this.haze)),
-      new LineSegments(this.wall.geo, new LineBasicMaterial(additive)),
+      new LineSegments(this.wall.geo, spotMaterial(this.haze)),
     );
     for (const o of this.group.children) o.frustumCulled = false;
   }
@@ -400,6 +452,10 @@ export class Beams {
     s.count++;
   }
 
+  private setAge(a: number) {
+    this.sheets.curAge = this.rays.curAge = this.wall.curAge = a;
+  }
+
   private begin() {
     this.cached = -1;
     this.sheets.count = this.rays.count = this.wall.count = 0;
@@ -428,7 +484,9 @@ export class Beams {
 
   private scanOne(sc: Scanner, s: Readonly<Settings>, tau: number) {
     const isExp = s.exposureShape === 'exp';
-    const window = isExp ? tau * 5 : tau;
+    // ローリングシャッターのときは、どの時間の光が写るかを行ごとにGPU側で決めるので、読み出し時間ぶん多めに渡す
+    const roll = this.rig.roll;
+    const window = (isExp ? tau * 5 : tau) + roll * tau;
     const dt = 1 / s.pps;
     const haze = this.rig.haze * s.bright;
 
@@ -437,8 +495,10 @@ export class Beams {
     for (let k = L - 1; k >= 1; k--) {
       const j = sc.index(k), i = sc.index(k - 1);
       if (!sc.on[i]) continue;
-      const w = isExp ? Math.exp(-(sc.scanT - sc.t[i]) / tau) : 1;
+      const age = (sc.scanT - sc.t[i]) / tau;
+      const w = isExp && !roll ? Math.exp(-age) : 1;
       const e = w * dt / tau;
+      this.setAge(roll ? age : -1);
       const r = sc.r[i] / 255 * this.gain[0], g = sc.g[i] / 255 * this.gain[1], b = sc.b[i] / 255 * this.gain[2];
       const d = Math.hypot(sc.x[i] - sc.x[j], sc.y[i] - sc.y[j]);
       this.ends(j, sc.x[j], sc.y[j], sc.x[i], sc.y[i], i);
@@ -452,6 +512,8 @@ export class Beams {
   // ベクター: 今のフレームの図形をそのまま、均一な明るさで
 
   private frameOne(f: Frame, s: Readonly<Settings>) {
+    // ベクターには時刻がないので、ローリングシャッターは効かない
+    this.setAge(-1);
     const haze = this.rig.haze * s.bright;
     let total = 0;
     for (let i = 1; i < f.length; i++) {

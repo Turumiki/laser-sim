@@ -46,12 +46,9 @@ export class Engine {
       lref: 2500 * px,
     };
 
-    // ローリングシャッターはカメラの写り方なので、クッキー用には入れない
-    const tau = this.sim.exposureTime();
-    const roll = s.rolling && s.mode === 'scan' && !linear ? s.readout / 1000 * s.timeScale / tau : 0;
     this.inst.clear();
     if (s.mode === 'scan') {
-      scanInstances(this.inst, this.scanner, s, view, tau, roll);
+      scanInstances(this.inst, this.scanner, s, view, this.sim.exposureTime());
     } else {
       frameInstances(this.inst, this.sim.currentFrame(), s, view);
     }
@@ -63,8 +60,6 @@ export class Engine {
       glow: linear ? 0 : s.glow,
       exposure: s.bright,
       linear,
-      roll,
-      rollExp: s.exposureShape === 'exp',
       clip: s.clip ? [(W - side) / 2, (H - side) / 2, side, side] : null,
     });
   }
