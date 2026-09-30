@@ -2,6 +2,7 @@
 .state.json.tmp
 node_modules/
 dist/
+.env.local
 .DS_Store
 .playwright-mcp/
 .shows.json
