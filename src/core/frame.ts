@@ -33,6 +33,13 @@ export class Frame {
     this.l[i] = level;
   }
 
+  // 先頭の n 点を捨てて詰める
+  dropFront(n: number) {
+    n = Math.min(n, this.length);
+    for (const a of [this.x, this.y, this.r, this.g, this.b, this.on, this.l]) a.copyWithin(0, n, this.length);
+    this.length -= n;
+  }
+
   private grow() {
     const n = this.x.length * 2;
     const copy = <T extends Float32Array | Uint8Array>(a: T, b: T) => { b.set(a); return b; };
@@ -57,6 +64,8 @@ export class FrameBuilder {
   private frame!: Frame;
   private step = 0.025;
   private started = false;
+  // moveTo（消灯して移動）した回数。1なら一筆書き
+  private paths = 0;
   private fx = 0;
   private fy = 0;
   private cx = 0;
@@ -69,6 +78,7 @@ export class FrameBuilder {
     this.frame = frame;
     this.step = step;
     this.started = false;
+    this.paths = 0;
     this.level = 1;
   }
 
@@ -80,6 +90,7 @@ export class FrameBuilder {
 
   // 消灯したまま移動。消してから動き出し、着いたらミラーが落ち着くまで待ってから点ける
   moveTo(x: number, y: number) {
+    this.paths++;
     if (!this.started) {
       this.started = true;
       this.fx = x;
@@ -103,6 +114,12 @@ export class FrameBuilder {
   // フレームは繰り返し描かれるので、最後に最初の点まで消灯して戻っておく
   closeLoop() {
     if (!this.started) return;
+    // 一筆書きで始点に戻って終わる図形（円など）は、消灯せずにそのまま次の周へつなぐ。
+    // 実機のソフトでも閉じた図形はこうする。消すと毎周その場所が欠ける
+    if (this.paths === 1 && Math.hypot(this.fx - this.cx, this.fy - this.cy) < this.step * 0.5) {
+      this.frame.dropFront(BLANK_AFTER);
+      return;
+    }
     const extra = Math.round(Math.hypot(this.fx - this.cx, this.fy - this.cy) * 4);
     this.travel(this.fx, this.fy);
     for (let i = 0; i < extra; i++) this.push(this.fx, this.fy, false);
