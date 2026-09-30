@@ -258,10 +258,20 @@ function buildRigPanel() {
     show();
   }
   const note = document.createElement('p');
-  note.textContent = 'ドラッグで回転、右ドラッグで移動、ホイールで拡大。H でこの枠を隠す';
+  note.textContent = 'ドラッグで回転、右ドラッグ（2本指）で移動、ホイール（ピンチ）で拡大。H または右上のボタンでこの枠を隠す';
   panel.append(note);
 }
 
+// 設定の枠を隠す（キーボードのないスマホ用にボタンも置く）
+const PANEL_KEY = 'laser:viewer:hidden';
+const panelToggle = document.getElementById('rig-toggle')!;
+const setPanel = (hidden: boolean) => {
+  document.getElementById('rig')!.classList.toggle('hidden', hidden);
+  panelToggle.textContent = hidden ? '設定' : '隠す';
+  saveLocal(PANEL_KEY, hidden);
+};
+setPanel(loadLocal<boolean>(PANEL_KEY) ?? false);
+panelToggle.addEventListener('click', () => setPanel(!document.getElementById('rig')!.classList.contains('hidden')));
 addEventListener('keydown', e => {
-  if (e.key === 'h' || e.key === 'H') document.getElementById('rig')!.classList.toggle('hidden');
+  if (e.key === 'h' || e.key === 'H') panelToggle.click();
 });
