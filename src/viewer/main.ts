@@ -114,6 +114,8 @@ interface ViewerSettings {
   smoke: number;
   grain: number;
   extinction: number;
+  // 映像の描き方で、遠くの減衰を弱める量
+  flat: number;
   target: TargetKind;
   count: number;
   spacing: number;
@@ -125,7 +127,7 @@ const RIG_KEY = 'laser:viewer';
 const vs: ViewerSettings = {
   // スマホのGPUは非力なので、初めて開いたときは軽い画質にする
   channels: [channel],
-  quality: matchMedia('(pointer: coarse)').matches ? 'low' : 'mid', haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, extinction: 0.3, target: 'wall', count: 1, spacing: 2, layout: 'parallel', view: 'audience', render: 'vector',
+  quality: matchMedia('(pointer: coarse)').matches ? 'low' : 'mid', haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, extinction: 0.3, flat: 0, target: 'wall', count: 1, spacing: 2, layout: 'parallel', view: 'audience', render: 'vector',
   ...loadLocal<ViewerSettings>(RIG_KEY),
 };
 if (!VIEWS.some(v => v.id === vs.view)) vs.view = 'audience';
@@ -397,7 +399,7 @@ startLoop(dt => {
       return { ...p, halfTan: Math.tan(f.store.get().scanAngle / 2 * Math.PI / 180), cookie: cookies.get(f.store, f.sim) };
     });
     cookies.update(new Set(feedOrder.map(f => f.sim)));
-    volume.set(list, STEPS[vs.quality] ?? 48, vs.distance * 1.5, vs.haze * VIDEO_GAIN);
+    volume.set(list, STEPS[vs.quality] ?? 48, vs.distance * 1.5, vs.haze * VIDEO_GAIN, vs.flat);
   } else {
     cookies.update(new Set());
     beams.draw(feedOrder.map(f => sources.get(f)!));
@@ -420,6 +422,7 @@ function buildRigPanel() {
     ['smoke', 'スモーク', 0, 1, 0.05],
     ['grain', 'スモークの粒', 0.2, 2, 0.05],
     ['extinction', 'ヘイズの減衰', 0, 1, 0.05],
+    ['flat', '遠くの減衰を弱める', 0, 1, 0.05],
   ];
   panel.innerHTML = '<h3>3D</h3>';
   const qualityRow = document.createElement('label');

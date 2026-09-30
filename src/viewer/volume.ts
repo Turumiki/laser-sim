@@ -112,12 +112,13 @@ export class VolumePass extends Pass {
 
     this.volumeMat = new ShaderMaterial({
       // スモークはHighでも作り置きの模様を使う（その場で計算すると、何十回も調べるこの処理では重すぎる）
-      uniforms: { ...haze, ...shared, uProcedural: { value: 0 }, uFrame: { value: 0 }, uSteps: { value: 24 }, uMaxT: { value: 60 }, uLod: { value: 2.5 } },
+      uniforms: { ...haze, ...shared, uProcedural: { value: 0 }, uFrame: { value: 0 }, uSteps: { value: 24 }, uMaxT: { value: 60 }, uLod: { value: 2.5 }, uFlat: { value: 0 } },
       vertexShader: VERTEX,
       fragmentShader: SMOKE_GLSL + COMMON + `
         uniform float uSteps;
         uniform float uMaxT;
         uniform float uLod;
+        uniform float uFlat;
         uniform float uFrame;
 
         // 隣り合う画素で偏りにくいノイズ（インターリーブド・グラディエント・ノイズ）。フレームごとにずらす
@@ -166,9 +167,11 @@ export class VolumePass extends Pass {
               vec3 rel = a + dir * t;
               vec3 p = uCam + dir * t;
               float dens = mix(1.0, smoke1(p) * 1.7, uSmoke);
-              // スポットライトは距離の2乗で弱まる。細い線を取りこぼさないよう、少しぼかした段を読む
+              // スポットライトは距離の2乗で弱まる。細い線を取りこぼさないよう、少しぼかした段を読む。
+              // uFlat を上げると遠くの減衰を弱める（1で距離に反比例。4mの所は変わらない）
+              float r2 = max(dot(rel, rel), 0.25);
               acc += cookie(uCookieIndex[j], clamp(uv * 0.5 + 0.5, 0.0, 1.0), uLod) * airlight(rel, dir) * dens
-                / max(dot(rel, rel), 0.25) * dt;
+                * pow(r2 / 16.0, 0.5 * uFlat) / r2 * dt;
             }
           }
           gl_FragColor = vec4(acc * uIntensity, 1.0);
@@ -225,7 +228,7 @@ export class VolumePass extends Pass {
     this.compositeQuad = new FullScreenQuad(this.compositeMat);
   }
 
-  set(projectors: readonly VolumeProjector[], steps: number, maxT: number, intensity: number) {
+  set(projectors: readonly VolumeProjector[], steps: number, maxT: number, intensity: number, flat: number) {
     const u = this.volumeMat.uniforms;
     const cookies: Texture[] = [];
     const list = projectors.slice(0, MAX);
@@ -243,6 +246,7 @@ export class VolumePass extends Pass {
     u.uSteps.value = steps;
     u.uMaxT.value = maxT;
     u.uIntensity.value = intensity;
+    u.uFlat.value = flat;
   }
 
   setSize(width: number, height: number) {
