@@ -62,15 +62,49 @@ button, input, select { font: inherit; color: inherit; }
 #viewer {
   grid-area: view;
   position: relative;
-  background: #0d0d0d;
+  /* 黒いキャンバス（出力の範囲）がはっきり分かるよう、外側は少し明るくする */
+  background: #242424;
   overflow: hidden;
 }
-#preview { position: absolute; inset: 0; margin: auto; display: block; cursor: grab; }
+#preview { position: absolute; inset: 0; margin: auto; display: block; cursor: grab; outline: 1px solid #4a4a4a; }
 #preview.dragging { cursor: grabbing; }
+#viewer .frame-label {
+  position: absolute;
+  font-size: 10px;
+  line-height: 12px;
+  color: var(--dim);
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
 #viewer .guide {
   position: absolute;
   pointer-events: none;
-  outline: 1px dashed rgba(255, 255, 255, .12);
+  border: 1px dashed rgba(255, 255, 255, .28);
+}
+/* 正方形の四隅に角の印 */
+#viewer .guide::before, #viewer .guide::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  pointer-events: none;
+  background:
+    linear-gradient(#aaa, #aaa) top left / 10px 2px no-repeat,
+    linear-gradient(#aaa, #aaa) top left / 2px 10px no-repeat,
+    linear-gradient(#aaa, #aaa) top right / 10px 2px no-repeat,
+    linear-gradient(#aaa, #aaa) top right / 2px 10px no-repeat,
+    linear-gradient(#aaa, #aaa) bottom left / 10px 2px no-repeat,
+    linear-gradient(#aaa, #aaa) bottom left / 2px 10px no-repeat,
+    linear-gradient(#aaa, #aaa) bottom right / 10px 2px no-repeat,
+    linear-gradient(#aaa, #aaa) bottom right / 2px 10px no-repeat;
+}
+#viewer .guide::after { display: none; }
+#viewer .guide-label {
+  position: absolute;
+  left: 6px;
+  top: 4px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, .45);
+  white-space: nowrap;
 }
 
 /* インスペクター */
@@ -127,6 +161,18 @@ button, input, select { font: inherit; color: inherit; }
 .row select { height: 18px; border: 1px solid var(--line); border-radius: 2px; background: var(--bg0); padding: 0 2px; }
 .row input[type=checkbox] { margin: 0; accent-color: var(--accent); }
 .row input[type=color] { width: 100%; height: 18px; padding: 0; border: 1px solid var(--line); background: var(--bg0); }
+.section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 8px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--bg1);
+  border-bottom: 1px solid var(--bg3);
+}
+.section-head small { font-weight: normal; color: var(--dim); font-size: 11px; }
 .row.changed { box-shadow: inset 2px 0 0 var(--accent); }
 .row.inactive { opacity: .4; }
 .row.changed > label { color: var(--text); }

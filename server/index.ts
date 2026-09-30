@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { networkInterfaces } from 'node:os';
 import path from 'node:path';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { sanitize } from '../src/core/params.ts';
+import { isShared, sanitize } from '../src/core/params.ts';
 import { Clocks } from './clock.ts';
 import { ShowPlayer } from './show.ts';
 import { StateStore } from './state.ts';
@@ -20,6 +20,24 @@ states.rewrite(d => {
   const inner = d.data && typeof d.data === 'object' ? d.data as Record<string, unknown> : d;
   return sanitize(inner) as Record<string, unknown>;
 });
+
+// 全チャンネル共通の設定は、この名前（チャンネル名としては使えない）で持つ
+const SHARED = '*';
+const split = (d: Record<string, unknown>) => {
+  const shared: Record<string, unknown> = {}, own: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(d)) (isShared(k) ? shared : own)[k] = v;
+  return { shared, own };
+};
+// 以前はチャンネルごとに持っていたので、共通の設定は default（なければ最初のチャンネル）から引き継ぐ
+if (!states.keys().includes(SHARED)) {
+  const from = states.keys().includes('default') ? 'default' : states.keys()[0];
+  states.patch(SHARED, from ? split(states.get(from)).shared : {});
+}
+for (const ch of states.keys()) {
+  if (ch !== SHARED) states.replace(ch, split(states.get(ch)).own);
+}
+// 画面に渡すのは、共通の設定とそのチャンネルの設定を合わせたもの
+const merged = (ch: string) => ({ ...states.get(SHARED), ...states.get(ch) });
 
 // チャンネル名は英数字と _ - だけ。オブジェクトの特別な名前（__proto__ など）は使わせない
 const RESERVED = new Set(['__proto__', 'constructor', 'prototype']);
@@ -43,6 +61,7 @@ function broadcastShow(ch: string) {
 // 使われているチャンネルの一覧（設定があるもの、カスタムのショーがあるもの、いまつながっているもの）
 function channelList() {
   const all = new Set([...states.keys(), ...shows.channels(), ...channels.keys()]);
+  all.delete(SHARED);
   return [...all].sort();
 }
 
@@ -55,7 +74,7 @@ function showCommand(ch: string, msg: Record<string, unknown>) {
     const t0 = Date.now();
     for (const c of channelList()) {
       if (!shows.play(c, msg.id, t0)) continue;
-      clocks.reset(c, states.get(c), t0);
+      clocks.reset(c, merged(c), t0);
       broadcast(c, {}, null, true);
     }
   } else if (msg.action === 'stopAll') {
@@ -64,7 +83,7 @@ function showCommand(ch: string, msg: Record<string, unknown>) {
 }
 
 function broadcast(ch: string, data: Record<string, unknown>, from: string | null, withClock: boolean) {
-  const clock = withClock ? clocks.get(ch, states.get(ch)) : undefined;
+  const clock = withClock ? clocks.get(ch, merged(ch)) : undefined;
   const msg = JSON.stringify({ type: 'patch', from, data, clock });
   for (const ws of channels.get(ch) ?? []) if (ws.readyState === ws.OPEN) ws.send(msg);
 }
@@ -74,9 +93,20 @@ function applyPatch(ch: string, data: unknown, from: string | null) {
   // 画面側と同じ決まりで型と範囲を揃え、知らないキーは捨てる
   const patch = sanitize(data as Record<string, unknown>) as Record<string, unknown>;
   if (!Object.keys(patch).length) return true;
-  const timeChanged = clocks.update(ch, states.get(ch), patch);
-  states.patch(ch, patch);
-  broadcast(ch, patch, from, timeChanged);
+  const { shared, own } = split(patch);
+  if (Object.keys(shared).length) {
+    // 共通の設定は全チャンネルに配る（スローなどは各チャンネルの時間軸にも効く）
+    const targets = new Set([...channelList(), ch]);
+    const timed = new Set<string>();
+    for (const t of targets) if (clocks.update(t, merged(t), shared)) timed.add(t);
+    states.patch(SHARED, shared);
+    for (const t of targets) broadcast(t, shared, from, timed.has(t));
+  }
+  if (Object.keys(own).length) {
+    const timeChanged = clocks.update(ch, merged(ch), own);
+    states.patch(ch, own);
+    broadcast(ch, own, from, timeChanged);
+  }
   return true;
 }
 
@@ -101,10 +131,10 @@ async function readBody(req: IncomingMessage) {
 async function api(req: IncomingMessage, res: ServerResponse, url: URL) {
   const ch = channelOf(url);
   if (url.pathname === '/api/state') {
-    if (req.method === 'GET') return json(res, 200, states.get(ch));
+    if (req.method === 'GET') return json(res, 200, merged(ch));
     if (req.method === 'POST' || req.method === 'PATCH') {
       try {
-        if (applyPatch(ch, JSON.parse(await readBody(req)), null)) return json(res, 200, states.get(ch));
+        if (applyPatch(ch, JSON.parse(await readBody(req)), null)) return json(res, 200, merged(ch));
       } catch { /* 下で400を返す */ }
       return json(res, 400, { error: 'JSONのオブジェクトを送ってください' });
     }
@@ -152,7 +182,7 @@ server.on('upgrade', (req, socket, head) => {
     let set = channels.get(ch);
     if (!set) channels.set(ch, set = new Set());
     set.add(ws);
-    ws.send(JSON.stringify({ type: 'hello', id, data: states.get(ch), clock: clocks.get(ch, states.get(ch)) }));
+    ws.send(JSON.stringify({ type: 'hello', id, data: merged(ch), clock: clocks.get(ch, merged(ch)) }));
     ws.send(showMessage(ch));
     ws.on('message', raw => {
       try {

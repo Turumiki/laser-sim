@@ -190,6 +190,13 @@ export const PRESETS: Record<string, { label: string; title: string; values: Par
 const byKey = new Map<string, ParamDef>(PARAMS.map(p => [p.key, p]));
 export const paramOf = (key: string) => byKey.get(key);
 
+// 全チャンネル共通の設定のグループ（見え方・出力・観察用）。残り（絵柄・レーザー機）はレーザーごと
+export const SHARED_GROUPS: readonly GroupId[] = ['camera', 'output', 'debug'];
+export const isShared = (key: string) => {
+  const p = byKey.get(key);
+  return !!p && SHARED_GROUPS.includes(p.group);
+};
+
 export function outputSize(s: Pick<Settings, 'output'>): readonly [number, number] {
   return OUTPUT_SIZES[s.output] ?? OUTPUT_SIZES['1920x1080'];
 }

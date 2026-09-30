@@ -1,4 +1,4 @@
-import { DEFAULTS, GROUPS, PARAMS, PRESETS, type NumberParam, type ParamDef, type Settings } from '../core/params';
+import { DEFAULTS, GROUPS, PARAMS, PRESETS, SHARED_GROUPS, type NumberParam, type ParamDef, type Settings } from '../core/params';
 import { loadLocal, saveLocal } from '../core/persist';
 import type { Store } from '../core/store';
 import { el } from './dom';
@@ -9,7 +9,7 @@ const CLOSED_KEY = 'laser:inspector:closed';
 // ツールバーに出しているもの
 const IN_TOOLBAR = new Set<string>(['mode', 'output']);
 
-export function buildInspector(root: HTMLElement, store: Store) {
+export function buildInspector(root: HTMLElement, store: Store, channel: string) {
   const updaters: Updater[] = [];
   const closed = new Set(loadLocal<string[]>(CLOSED_KEY) ?? []);
 
@@ -20,7 +20,16 @@ export function buildInspector(root: HTMLElement, store: Store) {
   });
   root.append(el('div', { class: 'inspector-head' }, resetAll));
 
+  // このレーザー（チャンネル）の設定と、全チャンネル共通の設定を分けて見せる
+  let lastShared: boolean | null = null;
   for (const g of GROUPS) {
+    const shared = SHARED_GROUPS.includes(g.id);
+    if (shared !== lastShared) {
+      lastShared = shared;
+      root.append(shared
+        ? el('div', { class: 'section-head', title: 'どのチャンネルで変えても、全部のチャンネルに効く' }, '全体', el('small', {}, '全チャンネル共通'))
+        : el('div', { class: 'section-head', title: 'このチャンネルのレーザーだけの設定' }, 'このレーザー', el('small', {}, `ch: ${channel}`)));
+    }
     const rows = el('div', { class: 'rows' });
     const head = el('h3', {}, g.label);
     const section = el('section', { class: closed.has(g.id) ? 'group closed' : 'group' }, head, rows);

@@ -32,6 +32,11 @@ export class StateStore {
     return this.data[ch] ?? {};
   }
 
+  replace(ch: string, data: Data) {
+    this.data[ch] = data;
+    this.dirty = true;
+  }
+
   patch(ch: string, patch: Data) {
     this.data[ch] = { ...this.data[ch], ...patch };
     this.dirty = true;

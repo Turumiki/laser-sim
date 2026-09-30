@@ -44,7 +44,7 @@ const link = connectSync(store, {
 
 const recorder = new Recorder(canvas);
 buildToolbar($('toolbar'), store, recorder, channel);
-buildInspector($('inspector'), store);
+buildInspector($('inspector'), store, channel);
 buildPatternGrid($('patterns'), store);
 buildTabs($('bottom'));
 fastTooltips();

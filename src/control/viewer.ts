@@ -4,25 +4,33 @@ import { el } from './dom';
 
 // ビューア。プレビューを枠に収め、マウスで位置・サイズ・角度を動かす
 export function attachViewer(root: HTMLElement, canvas: HTMLCanvasElement, store: Store) {
-  const guide = el('div', { class: 'guide' });
-  root.append(guide);
+  // 出力の範囲（キャンバス）と、レーザーが描ける範囲（中央の正方形）が分かるように枠と表示を付ける
+  const frameLabel = el('span', { class: 'frame-label' });
+  const guideLabel = el('span', { class: 'guide-label' });
+  const guide = el('div', { class: 'guide' }, guideLabel);
+  root.append(frameLabel, guide);
+  const PAD = 14;
 
   const fit = () => {
-    const [w, h] = outputSize(store.get());
-    const k = Math.min(root.clientWidth / w, root.clientHeight / h);
+    const s = store.get();
+    const [w, h] = outputSize(s);
+    const k = Math.min((root.clientWidth - PAD * 2) / w, (root.clientHeight - PAD * 2) / h);
     const cw = w * k, ch = h * k, side = Math.min(cw, ch);
     canvas.style.width = `${cw}px`;
     canvas.style.height = `${ch}px`;
-    // レーザーが描ける範囲（中央の正方形）
+    const left = (root.clientWidth - cw) / 2, top = (root.clientHeight - ch) / 2;
+    frameLabel.textContent = `出力 ${w} × ${h}`;
+    Object.assign(frameLabel.style, { left: `${left}px`, top: `${top - 13}px` });
     Object.assign(guide.style, {
       width: `${side}px`,
       height: `${side}px`,
       left: `${(root.clientWidth - side) / 2}px`,
       top: `${(root.clientHeight - side) / 2}px`,
     });
+    guideLabel.textContent = `描画範囲（最大走査角 ${Math.round(s.scanAngle)}°）`;
   };
   new ResizeObserver(fit).observe(root);
-  store.subscribe(ch => { if (ch.output) fit(); });
+  store.subscribe(ch => { if (ch.output || ch.scanAngle !== undefined) fit(); });
   fit();
 
   const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
