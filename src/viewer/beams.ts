@@ -5,6 +5,7 @@ import {
 import type { Frame } from '../core/frame';
 import type { Settings } from '../core/params';
 import type { Scanner } from '../core/scanner';
+import type { Surfaces } from './surfaces';
 
 export interface Rig {
   // 走査角（片側, rad）。点の座標1がこの角度になる
@@ -94,8 +95,11 @@ export class Beams {
   // 点の座標はサイズを掛ける前の値なので、ここで掛ける
   private scale = 1;
 
-  constructor(rig: Rig) {
+  private surfaces: Surfaces;
+
+  constructor(rig: Rig, surfaces: Surfaces) {
     this.rig = rig;
+    this.surfaces = surfaces;
     this.group.add(
       new Mesh(this.sheets.geo, sheetMaterial()),
       new LineSegments(this.rays.geo, new LineBasicMaterial(additive)),
@@ -104,12 +108,28 @@ export class Beams {
     for (const o of this.group.children) o.frustumCulled = false;
   }
 
-  // 点の座標 → 壁の上の位置
+  // 点の座標 → ビームが当たる位置。戻り値は奥行き（何にも当たらなければ Infinity）
   private hit(x: number, y: number, out: number[]) {
-    const a = this.rig.halfAngle * this.scale, d = this.rig.distance;
-    out[0] = Math.tan(x * a) * d;
-    out[1] = Math.tan(y * a) * d;
-    out[2] = -d;
+    const a = this.rig.halfAngle * this.scale;
+    const tx = Math.tan(x * a), ty = Math.tan(y * a);
+    const t = this.surfaces.hit(tx, ty);
+    // 当たらないビームは一定の長さで止め、先へ行くほど消えていく
+    const reach = Number.isFinite(t) ? t : this.rig.distance * 1.2;
+    out[0] = tx * reach;
+    out[1] = ty * reach;
+    out[2] = -reach;
+    return t;
+  }
+
+  // 光源からの距離による減衰
+  private fade(p: number[]) {
+    return 1 - (1 - FAR_FADE) * Math.min(1, -p[2] / this.rig.distance);
+  }
+
+  // 2本のビームが別々の物に当たっている（奥行きが飛んでいる）か
+  private split(ta: number, tb: number) {
+    if (!Number.isFinite(ta) || !Number.isFinite(tb)) return Number.isFinite(ta) !== Number.isFinite(tb);
+    return Math.abs(ta - tb) > 0.15 * Math.max(ta, tb);
   }
 
   private a = [0, 0, 0];
@@ -117,32 +137,34 @@ export class Beams {
 
   private sheet(x0: number, y0: number, x1: number, y1: number, r: number, g: number, b: number, k: number) {
     if (this.sheets.full()) return;
-    this.hit(x0, y0, this.a);
-    this.hit(x1, y1, this.b);
-    const f = k * FAR_FADE, s = this.sheets;
+    const ta = this.hit(x0, y0, this.a), tb = this.hit(x1, y1, this.b);
+    // 物の縁をまたぐ膜は、手前の物を突き抜けた形になってしまうので描かない
+    if (this.split(ta, tb)) return;
+    const fa = k * this.fade(this.a), fb = k * this.fade(this.b), s = this.sheets;
     s.vert(0, 0, 0, 0, r * k, g * k, b * k);
-    s.vert(1, this.a[0], this.a[1], this.a[2], r * f, g * f, b * f);
-    s.vert(2, this.b[0], this.b[1], this.b[2], r * f, g * f, b * f);
+    s.vert(1, this.a[0], this.a[1], this.a[2], r * fa, g * fa, b * fa);
+    s.vert(2, this.b[0], this.b[1], this.b[2], r * fb, g * fb, b * fb);
     s.count++;
   }
 
   private ray(x: number, y: number, r: number, g: number, b: number, k: number) {
     if (this.rays.full()) return;
     this.hit(x, y, this.a);
-    const f = k * FAR_FADE, s = this.rays;
+    const f = k * this.fade(this.a), s = this.rays;
     s.vert(0, 0, 0, 0, r * k, g * k, b * k);
     s.vert(1, this.a[0], this.a[1], this.a[2], r * f, g * f, b * f);
     s.count++;
   }
 
+  // 物に当たった所の光。当たっていなければ描かない
   private spot(x0: number, y0: number, x1: number, y1: number, r: number, g: number, b: number, k: number) {
     if (this.wall.full()) return;
-    this.hit(x0, y0, this.a);
-    this.hit(x1, y1, this.b);
-    // 壁から少しだけ浮かせて、壁の面と重ならないようにする
-    const s = this.wall;
-    s.vert(0, this.a[0], this.a[1], this.a[2] + 0.01, r * k, g * k, b * k);
-    s.vert(1, this.b[0], this.b[1], this.b[2] + 0.01, r * k, g * k, b * k);
+    const ta = this.hit(x0, y0, this.a), tb = this.hit(x1, y1, this.b);
+    if (!Number.isFinite(ta) || !Number.isFinite(tb) || this.split(ta, tb)) return;
+    // 面から少しだけ手前に出して、面と重ならないようにする
+    const s = this.wall, pull = 0.998;
+    s.vert(0, this.a[0] * pull, this.a[1] * pull, this.a[2] * pull, r * k, g * k, b * k);
+    s.vert(1, this.b[0] * pull, this.b[1] * pull, this.b[2] * pull, r * k, g * k, b * k);
     s.count++;
   }
 

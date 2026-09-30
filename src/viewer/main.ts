@@ -1,6 +1,6 @@
 import {
-  ACESFilmicToneMapping, BoxGeometry, Color, GridHelper, Mesh, MeshBasicMaterial, PerspectiveCamera, PlaneGeometry,
-  Scene, Vector2, WebGLRenderer,
+  ACESFilmicToneMapping, BoxGeometry, Color, GridHelper, Mesh, MeshBasicMaterial, PerspectiveCamera, Scene, Vector2,
+  WebGLRenderer,
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -14,6 +14,7 @@ import { startLoop } from '../engine/loop';
 import { Simulation } from '../engine/simulation';
 import { connectSync } from '../sync/client';
 import { Beams, type Rig } from './beams';
+import { Surfaces, TARGETS, type TargetKind } from './surfaces';
 
 // レーザーが空間にどう出るかを3Dで見る（隠し機能）。設定は操作画面と同期する
 const params = new URLSearchParams(location.search);
@@ -24,9 +25,9 @@ const sync = connectSync(store, { channel, role: 'output' });
 const sim = new Simulation(store);
 
 // ビューア独自の設定（同期しない）
-interface ViewerSettings { angle: number; haze: number; distance: number; bloom: number }
+interface ViewerSettings { angle: number; haze: number; distance: number; bloom: number; target: TargetKind }
 const RIG_KEY = 'laser:viewer';
-const vs: ViewerSettings = { angle: 40, haze: 1, distance: 8, bloom: 1, ...loadLocal<ViewerSettings>(RIG_KEY) };
+const vs: ViewerSettings = { angle: 40, haze: 1, distance: 8, bloom: 1, target: 'wall', ...loadLocal<ViewerSettings>(RIG_KEY) };
 const rig: Rig = { halfAngle: 0, distance: 0, haze: 0 };
 const applyRig = () => {
   rig.halfAngle = vs.angle / 2 * Math.PI / 180;
@@ -57,12 +58,12 @@ scene.add(body);
 const floor = new GridHelper(40, 40, 0x1a1a1a, 0x111111);
 floor.position.y = -2.2;
 scene.add(floor);
-const wall = new Mesh(new PlaneGeometry(60, 30), new MeshBasicMaterial({ color: 0x080808 }));
-scene.add(wall);
-const placeWall = () => { wall.position.z = -vs.distance - 0.02; };
+const surfaces = new Surfaces();
+scene.add(surfaces.group);
+const placeWall = () => surfaces.build(vs.target, vs.distance);
 placeWall();
 
-const beams = new Beams(rig);
+const beams = new Beams(rig, surfaces);
 scene.add(beams.group);
 
 const composer = new EffectComposer(renderer);
@@ -95,13 +96,24 @@ startLoop(dt => {
 
 function buildRigPanel() {
   const panel = document.getElementById('rig')!;
-  const rows: [keyof ViewerSettings, string, number, number, number][] = [
+  const rows: [Exclude<keyof ViewerSettings, 'target'>, string, number, number, number][] = [
     ['angle', '走査角', 10, 80, 1],
     ['haze', 'ヘイズ', 0.1, 5, 0.05],
     ['distance', '壁までの距離', 2, 20, 0.5],
     ['bloom', 'ブルーム', 0, 3, 0.05],
   ];
   panel.innerHTML = '<h3>3D</h3>';
+  const targetRow = document.createElement('label');
+  const select = document.createElement('select');
+  for (const t of TARGETS) select.add(new Option(t.label, t.id));
+  select.value = vs.target;
+  select.addEventListener('change', () => {
+    vs.target = select.value as TargetKind;
+    placeWall();
+    saveLocal(RIG_KEY, vs);
+  });
+  targetRow.append('投影先', select);
+  panel.append(targetRow);
   for (const [key, label, min, max, step] of rows) {
     const row = document.createElement('label');
     const input = Object.assign(document.createElement('input'), { type: 'range', min, max, step, value: vs[key] });
