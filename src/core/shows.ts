@@ -28,6 +28,48 @@ export const BUILTIN_SHOWS: readonly Show[] = [
     ],
   },
   {
+    // 速いテンポで短く切り替え、ストロボと色の変化で盛り上げる
+    id: 'festival', name: 'フェス', bpm: 150, loop: true,
+    steps: [
+      // 暗転からの1本 → 開く
+      cue(2, { pattern: 'blackout' }),
+      cue(2, { pattern: 'dot', color: WHITE, offY: 0.3 }),
+      cue(2, { pattern: 'fan', color: CYAN, offY: 0.3 }),
+      cue(2, { pattern: 'multifan', color: MAGENTA, offY: 0.3, animSpeed: 2 }),
+      cue(4, { pattern: 'sweep', color: GREEN, offY: 0.3, animSpeed: 2 }),
+      // ストロボ
+      cue(1, { pattern: 'fan', color: RED, offY: 0.3 }),
+      cue(1, { pattern: 'blackout' }),
+      cue(1, { pattern: 'fan', color: BLUE, offY: 0.3 }),
+      cue(1, { pattern: 'blackout' }),
+      cue(1, { pattern: 'fan', color: WHITE, offY: 0.3 }),
+      cue(1, { pattern: 'blackout' }),
+      cue(1, { pattern: 'multifan', colorMode: 'rainbow', offY: 0.3 }),
+      cue(1, { pattern: 'blackout' }),
+      // 空間を埋める
+      cue(8, { pattern: 'liquidsky', color: CYAN, animSpeed: 2 }),
+      cue(4, { pattern: 'tunnel', colorMode: 'rainbow', animSpeed: 3 }),
+      cue(4, { pattern: 'circle', colorMode: 'cycle', size: 0.4, offY: 0.3, animSpeed: 3 }),
+      cue(2, { pattern: 'rotline', color: MAGENTA, offY: 0.3, animSpeed: 3 }),
+      cue(2, { pattern: 'vline', color: CYAN, offY: 0.3, rotSpeed: -180 }),
+      cue(2, { pattern: 'rotline', color: RED, offY: 0.3, rotSpeed: -270 }),
+      cue(2, { pattern: 'hline', color: GREEN, offY: 0.3, rotSpeed: 240 }),
+      cue(8, { pattern: 'spiro', colorMode: 'rainbow', animSpeed: 3, rotSpeed: 90 }),
+      cue(4, { pattern: 'lines', colorMode: 'cycle', animSpeed: 4 }),
+      cue(4, { pattern: 'star', colorMode: 'rainbow', rotSpeed: 360, size: 1 }),
+      // ストロボ（点）
+      cue(1, { pattern: 'dots', color: WHITE, offY: 0.3, animSpeed: 3 }),
+      cue(1, { pattern: 'blackout' }),
+      cue(1, { pattern: 'dots', color: WHITE, offY: 0.3, animSpeed: 3 }),
+      cue(1, { pattern: 'blackout' }),
+      // 締め
+      cue(8, { pattern: 'liquidsky', colorMode: 'rainbow', animSpeed: 3 }),
+      cue(8, { pattern: 'multifan', colorMode: 'rainbow', offY: 0.3, animSpeed: 3 }),
+      cue(4, { pattern: 'sweep', colorMode: 'cycle', offY: 0.3, animSpeed: 4 }),
+      cue(4, { pattern: 'blackout' }),
+    ],
+  },
+  {
     id: 'beams', name: 'ビーム中心', bpm: 128, loop: true,
     steps: [
       cue(8, { pattern: 'fan', color: GREEN, offY: 0.35 }),

@@ -7,7 +7,7 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "dev": "node --watch-path=server server/index.ts --dev",
+    "dev": "node --watch-path=server --watch-path=src/core/show.ts --watch-path=src/core/shows.ts --watch-path=src/core/params.ts server/index.ts --dev",
     "build": "vite build",
     "start": "node server/index.ts",
     "typecheck": "tsc -p tsconfig.json && tsc -p server/tsconfig.json"
