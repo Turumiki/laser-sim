@@ -1,11 +1,12 @@
 import {
   AdditiveBlending, BufferAttribute, BufferGeometry, DoubleSide, Group, LineBasicMaterial, LineSegments, Mesh,
-  ShaderMaterial,
+  ShaderMaterial, type Data3DTexture,
 } from 'three';
 import type { Frame } from '../core/frame';
 import type { Settings } from '../core/params';
 import type { Scanner } from '../core/scanner';
 import type { Surfaces } from './surfaces';
+import { smokeTexture } from './noise';
 
 export interface Rig {
   // 走査角（片側, rad）。点の座標1がこの角度になる
@@ -102,6 +103,13 @@ const SMOKE_GLSL = `
   float spread(vec3 w) {
     return min(3.0, 4.0 / max(length(w), 0.1));
   }
+  uniform highp sampler3D uNoise;
+  // 前もって作った3Dノイズを読む（1周期 = ノイズの格子8つぶん）
+  float tex(vec3 p) {
+    return texture(uNoise, p * 0.125).r;
+  }
+  // 1: その場でノイズを計算する（細かいが重い。画質High） / 0: 作っておいたノイズを読む（軽い）
+  uniform float uProcedural;
   float hash(vec3 p) {
     p = fract(p * 0.3183099 + 0.1);
     p *= 17.0;
@@ -118,17 +126,19 @@ const SMOKE_GLSL = `
   float fbm(vec3 p) {
     return 0.5 * noise(p) + 0.25 * noise(p * 2.03 + 1.7) + 0.125 * noise(p * 4.1 + 9.2);
   }
-  // 細い筋（煙の糸）になるノイズ
-  float ridge(vec3 p) {
-    return 1.0 - abs(2.0 * noise(p) - 1.0);
-  }
   float smoke1(vec3 w) {
     // ヘイズは横に広がって層になりやすいので、縦方向を詰める
     vec3 p = w * uGrain * vec3(0.7, 1.8, 0.7) + vec3(uTime * 0.05, uTime * 0.02, -uTime * 0.04);
-    // 流れながら形も変わるよう、歪ませる量を時間で動かす
-    vec3 q = p * 0.5 + vec3(0.0, 0.0, uTime * 0.07);
-    p += 1.6 * (vec3(noise(q + 3.1), noise(q + 7.4), noise(q + 1.3)) - 0.5);
-    float d = fbm(p) * 0.7 + ridge(p * 2.3) * 0.3;
+    float d;
+    if (uProcedural > 0.5) {
+      // 流れながら形も変わるよう、歪ませる量を時間で動かす
+      vec3 q = p * 0.5 + vec3(0.0, 0.0, uTime * 0.07);
+      p += 1.6 * (vec3(noise(q + 3.1), noise(q + 7.4), noise(q + 1.3)) - 0.5);
+      d = fbm(p) * 0.7 + (1.0 - abs(2.0 * noise(p * 2.3) - 1.0)) * 0.3;
+    } else {
+      p += 1.6 * (tex(p * 0.5 + vec3(3.1, 7.4, uTime * 0.07)) - 0.5);
+      d = tex(p) * 0.7 + (1.0 - abs(2.0 * tex(p * 2.3 + 5.0) - 1.0)) * 0.3;
+    }
     return smoothstep(0.38, 0.72, d);
   }
   // 光の膜には厚みがある（遠いほどビームが広がって厚い）。視線に沿って厚みの中を数か所測って平均する
@@ -149,6 +159,8 @@ export interface HazeUniforms {
   // ヘイズの減衰係数（1mあたり）
   uExt: { value: number };
   uThick: { value: number };
+  uNoise: { value: Data3DTexture };
+  uProcedural: { value: number };
 }
 
 const beamVertex = `
@@ -220,7 +232,7 @@ export class Beams {
   private scale = 1;
 
   private surfaces: Surfaces;
-  readonly haze: HazeUniforms = { uTime: { value: 0 }, uSmoke: { value: 0.6 }, uGrain: { value: 0.6 }, uExt: { value: 0.015 }, uThick: { value: 1 } };
+  readonly haze: HazeUniforms = { uTime: { value: 0 }, uSmoke: { value: 0.6 }, uGrain: { value: 0.6 }, uExt: { value: 0.015 }, uThick: { value: 1 }, uNoise: { value: smokeTexture() }, uProcedural: { value: 0 } };
 
   constructor(rig: Rig, surfaces: Surfaces) {
     this.rig = rig;
@@ -253,6 +265,7 @@ export class Beams {
 
   private use(p: Projector) {
     this.proj = p;
+    this.cached = -1;
     this.cos = Math.cos(p.yaw);
     this.sin = Math.sin(p.yaw);
     this.sheets.origin = this.rays.origin = this.wall.origin = p.pos;
@@ -268,36 +281,47 @@ export class Beams {
     return Math.abs(ta - tb) > 0.15 * Math.max(ta, tb);
   }
 
+  // 線分の両端の当たる位置と奥行き。隣の線分と端を共有するので、1点につき1回だけ計算して使い回す
   private a = [0, 0, 0];
   private b = [0, 0, 0];
+  private ta = 0;
+  private tb = 0;
+  private cached = -1;
 
-  private sheet(x0: number, y0: number, x1: number, y1: number, r: number, g: number, b: number, k: number) {
-    if (this.sheets.full()) return;
-    const ta = this.hit(x0, y0, this.a), tb = this.hit(x1, y1, this.b);
+  // 点 (x0,y0) → (x1,y1) の両端を a / b に用意する。key は前の点の番号（同じなら前回の b を a として使う）
+  private ends(key: number, x0: number, y0: number, x1: number, y1: number, next: number) {
+    if (this.cached === key) {
+      const t = this.a; this.a = this.b; this.b = t;
+      this.ta = this.tb;
+    } else {
+      this.ta = this.hit(x0, y0, this.a);
+    }
+    this.tb = this.hit(x1, y1, this.b);
+    this.cached = next;
+  }
+
+  private sheet(r: number, g: number, b: number, k: number) {
     // 物の縁をまたぐ膜は、手前の物を突き抜けた形になってしまうので描かない
-    if (this.split(ta, tb)) return;
-    const s = this.sheets;
-    const o = this.proj.pos;
+    if (this.sheets.full() || this.split(this.ta, this.tb)) return;
+    const s = this.sheets, o = this.proj.pos;
     s.vert(0, o[0], o[1], o[2], r * k, g * k, b * k);
     s.vert(1, this.a[0], this.a[1], this.a[2], r * k, g * k, b * k);
     s.vert(2, this.b[0], this.b[1], this.b[2], r * k, g * k, b * k);
     s.count++;
   }
 
-  private ray(x: number, y: number, r: number, g: number, b: number, k: number) {
+  private ray(r: number, g: number, b: number, k: number) {
     if (this.rays.full()) return;
-    this.hit(x, y, this.a);
     const s = this.rays, o = this.proj.pos;
     s.vert(0, o[0], o[1], o[2], r * k, g * k, b * k);
-    s.vert(1, this.a[0], this.a[1], this.a[2], r * k, g * k, b * k);
+    s.vert(1, this.b[0], this.b[1], this.b[2], r * k, g * k, b * k);
     s.count++;
   }
 
   // 物に当たった所の光。当たっていなければ描かない
-  private spot(x0: number, y0: number, x1: number, y1: number, r: number, g: number, b: number, k: number) {
-    if (this.wall.full()) return;
-    const ta = this.hit(x0, y0, this.a), tb = this.hit(x1, y1, this.b);
-    if (!Number.isFinite(ta) || !Number.isFinite(tb) || this.split(ta, tb)) return;
+  private spot(r: number, g: number, b: number, k: number) {
+    const ta = this.ta, tb = this.tb;
+    if (this.wall.full() || !Number.isFinite(ta) || !Number.isFinite(tb) || this.split(ta, tb)) return;
     // 面から少しだけ手前に出して、面と重ならないようにする
     const s = this.wall, o = this.proj.pos, pull = 0.998;
     k *= Math.exp(-this.haze.uExt.value * (ta + tb) / 2);
@@ -309,6 +333,7 @@ export class Beams {
 
   private begin(s: Readonly<Settings>) {
     this.scale = s.size;
+    this.cached = -1;
     this.sheets.count = this.rays.count = this.wall.count = 0;
   }
 
@@ -343,10 +368,11 @@ export class Beams {
       const e = w * dt / tau;
       const r = sc.r[i] / 255, g = sc.g[i] / 255, b = sc.b[i] / 255;
       const d = Math.hypot(sc.x[i] - sc.x[j], sc.y[i] - sc.y[j]);
+      this.ends(j, sc.x[j], sc.y[j], sc.x[i], sc.y[i], i);
       // ほとんど動いていない間は1本のビーム、動いている間は光の膜
-      if (d < 0.004) this.ray(sc.x[i], sc.y[i], r, g, b, e * haze * 40);
-      else this.sheet(sc.x[j], sc.y[j], sc.x[i], sc.y[i], r, g, b, e / d * haze * 0.12);
-      this.spot(sc.x[j], sc.y[j], sc.x[i], sc.y[i], r, g, b, 0.8);
+      if (d < 0.004) this.ray(r, g, b, e * haze * 40);
+      else this.sheet(r, g, b, e / d * haze * 0.12);
+      this.spot(r, g, b, 0.8);
     }
   }
 
@@ -373,11 +399,13 @@ export class Beams {
       const r = f.r[i] / 255, g = f.g[i] / 255, b = f.b[i] / 255;
       const d = Math.hypot(f.x[i] - f.x[i - 1], f.y[i] - f.y[i - 1]);
       if (d > 1e-3) {
-        this.sheet(f.x[i - 1], f.y[i - 1], f.x[i], f.y[i], r, g, b, density);
-        this.spot(f.x[i - 1], f.y[i - 1], f.x[i], f.y[i], r, g, b, 0.8);
+        this.ends(i - 1, f.x[i - 1], f.y[i - 1], f.x[i], f.y[i], i);
+        this.sheet(r, g, b, density);
+        this.spot(r, g, b, 0.8);
         prevLit = true;
       } else if (!prevLit) {
-        this.ray(f.x[i], f.y[i], r, g, b, haze * 0.3);
+        this.ends(i - 1, f.x[i - 1], f.y[i - 1], f.x[i], f.y[i], i);
+        this.ray(r, g, b, haze * 0.3);
         prevLit = true;
       }
     }

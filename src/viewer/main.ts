@@ -26,10 +26,11 @@ const sim = new Simulation(store);
 
 // ビューア独自の設定（同期しない）
 type Quality = 'high' | 'mid' | 'low';
-const QUALITY: Record<Quality, { label: string; pixelRatio: () => number; samples: number; thick: number }> = {
-  high: { label: 'High', pixelRatio: () => Math.min(devicePixelRatio, 2), samples: 4, thick: 1 },
-  mid: { label: 'Mid', pixelRatio: () => 1, samples: 0, thick: 1 },
-  low: { label: 'Low', pixelRatio: () => 0.5, samples: 0, thick: 0 },
+// thick: スモークの厚みを何か所で測るか（1: 3か所）、procedural: スモークをその場で計算するか
+const QUALITY: Record<Quality, { label: string; pixelRatio: () => number; samples: number; thick: number; procedural: number }> = {
+  high: { label: 'High', pixelRatio: () => Math.min(devicePixelRatio, 2), samples: 4, thick: 1, procedural: 1 },
+  mid: { label: 'Mid', pixelRatio: () => 1, samples: 0, thick: 0, procedural: 0 },
+  low: { label: 'Low', pixelRatio: () => 0.5, samples: 0, thick: 0, procedural: 0 },
 };
 
 // 複数台の並べ方。実際の現場でよくある置き方
@@ -200,6 +201,7 @@ const buildComposer = () => {
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
   beams.haze.uThick.value = q.thick;
+  beams.haze.uProcedural.value = q.procedural;
   resize();
 };
 
@@ -215,7 +217,17 @@ buildComposer();
 
 buildRigPanel();
 
+// ?stats=1 で、fps と1フレームの処理時間（CPU側）を出す
+const stats = params.get('stats') === '1' ? document.body.appendChild(document.createElement('div')) : null;
+let fps = 0, cpu = 0;
+if (stats) {
+  stats.id = 'stats';
+  setInterval(() => { stats.textContent = `${fps.toFixed(0)} fps · CPU ${cpu.toFixed(2)} ms`; }, 250);
+}
+
 startLoop(dt => {
+  const t0 = performance.now();
+  if (dt > 0) fps += (1 / dt - fps) * 0.05;
   sim.update(dt);
   applyRig();
   sim.syncAnim(sync.time.animNow());
@@ -225,6 +237,7 @@ startLoop(dt => {
   beams.haze.uTime.value = performance.now() / 1000;
   controls.update();
   composer.render();
+  cpu += (performance.now() - t0 - cpu) * 0.05;
 });
 
 function buildRigPanel() {
