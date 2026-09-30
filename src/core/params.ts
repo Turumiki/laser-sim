@@ -145,11 +145,11 @@ export const DEFAULTS: Readonly<Settings> = {
   color: '#00ff40',
 };
 
-export const PRESETS: Record<string, { label: string; values: Partial<Settings> }> = {
-  real: { label: 'リアルタイム', values: { timeScale: 1, exposureShape: 'box', exposure: 1000 / 60, pps: 30000, head: false, showBlank: false } },
-  trail: { label: '彗星', values: { timeScale: 0.02, exposureShape: 'exp', exposure: 8, head: true, showBlank: false } },
-  slow: { label: 'スロー', values: { timeScale: 0.002, exposureShape: 'exp', exposure: 1.5, head: true, showBlank: true } },
-  flicker: { label: '低pps', values: { timeScale: 1, exposureShape: 'box', exposure: 1000 / 60, pps: 6000, head: false, showBlank: false } },
+export const PRESETS: Record<string, { label: string; title: string; values: Partial<Settings> }> = {
+  real: { label: '等速', title: '実機と同じ速さ', values: { timeScale: 1, exposureShape: 'box', exposure: 1000 / 60, pps: 30000, head: false, showBlank: false } },
+  slow50: { label: '1/50', title: 'スキャンを1/50の速さで観察', values: { timeScale: 0.02, exposureShape: 'exp', exposure: 8, head: true, showBlank: false } },
+  slow500: { label: '1/500', title: 'スキャンを1/500の速さで観察（ブランキング表示つき）', values: { timeScale: 0.002, exposureShape: 'exp', exposure: 1.5, head: true, showBlank: true } },
+  lowPps: { label: '低pps', title: '6kppsで描いたときのちらつき', values: { timeScale: 1, exposureShape: 'box', exposure: 1000 / 60, pps: 6000, head: false, showBlank: false } },
 };
 
 const byKey = new Map<string, ParamDef>(PARAMS.map(p => [p.key, p]));

@@ -40,7 +40,7 @@ export function buildInspector(root: HTMLElement, store: Store) {
 function presetRow(store: Store) {
   const row = el('div', { class: 'presets' });
   for (const p of Object.values(PRESETS)) {
-    const b = el('button', { class: 'tb' }, p.label);
+    const b = el('button', { class: 'tb', title: p.title }, p.label);
     b.addEventListener('click', () => store.set(p.values));
     row.append(b);
   }
