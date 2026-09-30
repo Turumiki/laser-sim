@@ -1,22 +1,19 @@
-import { buildFrame } from '../core/build';
-import { Frame } from '../core/frame';
 import { outputSize } from '../core/params';
-import { Scanner } from '../core/scanner';
 import type { Store } from '../core/store';
 import { Instances, frameInstances, scanInstances, type View } from '../render/instances';
 import { LaserRenderer } from '../render/renderer';
+import { Simulation } from './simulation';
 
-// シミュレーションと描画をまとめたもの。時間は外から渡す（リアルタイムでも書き出しでも同じ）
+// シミュレーションと2D描画をまとめたもの。時間は外から渡す（リアルタイムでも書き出しでも同じ）
 export class Engine {
-  readonly scanner: Scanner;
+  readonly sim: Simulation;
   private renderer: LaserRenderer;
-  private frame = new Frame();
   private inst = new Instances();
   private store: Store;
 
   constructor(canvas: HTMLCanvasElement, store: Store) {
     this.store = store;
-    this.scanner = new Scanner((out, t) => buildFrame(out, this.store.get(), t));
+    this.sim = new Simulation(store);
     this.renderer = new LaserRenderer(canvas);
   }
 
@@ -24,12 +21,12 @@ export class Engine {
     return outputSize(this.store.get());
   }
 
+  get scanner() {
+    return this.sim.scanner;
+  }
+
   update(dt: number) {
-    const s = this.store.get();
-    if (s.paused) return;
-    const scanDt = dt * s.timeScale;
-    if (s.mode === 'scan') this.scanner.step(scanDt, s);
-    else this.scanner.advance(scanDt, s.animSpeed);
+    this.sim.update(dt);
   }
 
   render() {
@@ -50,8 +47,7 @@ export class Engine {
     if (s.mode === 'scan') {
       scanInstances(this.inst, this.scanner, s, view);
     } else {
-      buildFrame(this.frame, s, this.scanner.animT);
-      frameInstances(this.inst, this.frame, view);
+      frameInstances(this.inst, this.sim.currentFrame(), view);
     }
 
     this.renderer.resize(W, H);

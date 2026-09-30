@@ -11,6 +11,7 @@ export default defineConfig({
       input: {
         index: page('./index.html'),
         output: page('./output.html'),
+        viewer: page('./viewer.html'),
       },
     },
   },

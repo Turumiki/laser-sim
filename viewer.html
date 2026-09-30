@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Laser 3D</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; color: #c8c8c8;
+    font: 12px/1.35 -apple-system, "Segoe UI", "Hiragino Sans", "Yu Gothic UI", sans-serif; }
+  canvas { display: block; }
+  #rig { position: absolute; top: 8px; right: 8px; width: 240px; padding: 6px 8px; background: rgba(35, 35, 35, .92);
+    border: 1px solid #121212; border-radius: 2px; }
+  #rig.hidden { display: none; }
+  #rig h3 { margin: 0 0 4px; font-size: 11px; font-weight: 600; }
+  #rig label { display: grid; grid-template-columns: 80px 1fr 40px; align-items: center; gap: 6px; min-height: 22px; color: #8b8b8b; }
+  #rig input { width: 100%; accent-color: #4d8fd6; }
+  #rig output { text-align: right; font-variant-numeric: tabular-nums; color: #c8c8c8; }
+  #rig p { margin: 6px 0 0; color: #6f6f6f; font-size: 11px; }
+</style>
+</head>
+<body>
+<div id="rig"></div>
+<script type="module" src="/src/viewer/main.ts"></script>
+</body>
+</html>
