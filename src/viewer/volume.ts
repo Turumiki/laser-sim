@@ -115,7 +115,7 @@ export class VolumePass extends Pass {
 
     this.volumeMat = new ShaderMaterial({
       // スモークはHighでも作り置きの模様を使う（その場で計算すると、何十回も調べるこの処理では重すぎる）
-      uniforms: { ...haze, ...shared, uProcedural: { value: 0 }, uFrame: { value: 0 }, uSteps: { value: 24 }, uMaxT: { value: 60 }, uLod: { value: 2.5 }, uFlat: { value: 0 } },
+      uniforms: { ...haze, ...shared, uProcedural: { value: 0 }, uFrame: { value: 0 }, uSteps: { value: 24 }, uMaxT: { value: 60 }, uLod: { value: 1.5 }, uFlat: { value: 0 } },
       vertexShader: VERTEX,
       fragmentShader: SMOKE_GLSL + COMMON + `
         uniform float uSteps;
@@ -215,15 +215,29 @@ export class VolumePass extends Pass {
 
     // 調べる位置をフレームごとに変えているので、前の結果と混ぜると粒々が平均されて滑らかになる
     this.accumMat = new ShaderMaterial({
-      uniforms: { tCur: { value: null }, tHist: { value: null }, uAlpha: { value: 1 } },
+      uniforms: { tCur: { value: null }, tHist: { value: null }, uAlpha: { value: 1 }, uTexel: { value: new Vector2(1, 1) } },
       vertexShader: VERTEX,
       fragmentShader: `
         uniform sampler2D tCur;
         uniform sampler2D tHist;
         uniform float uAlpha;
+        uniform vec2 uTexel;
         varying vec2 vUv;
         void main() {
-          gl_FragColor = vec4(mix(texture(tHist, vUv).rgb, texture(tCur, vUv).rgb, uAlpha), 1.0);
+          // 前の結果は、今のまわり3×3の明るさの範囲（平均±ばらつき）に収める。
+          // 粒は均されるが、もう光がない所に前の光が残らない（速く動くドットが尾を引かない）
+          vec3 m1 = vec3(0.0), m2 = vec3(0.0);
+          for (int y = -1; y <= 1; y++) {
+            for (int x = -1; x <= 1; x++) {
+              vec3 c = texture(tCur, vUv + vec2(x, y) * uTexel).rgb;
+              m1 += c;
+              m2 += c * c;
+            }
+          }
+          m1 /= 9.0;
+          vec3 sd = sqrt(max(m2 / 9.0 - m1 * m1, 0.0));
+          vec3 hist = clamp(texture(tHist, vUv).rgb, m1 - sd * 1.25, m1 + sd * 1.25);
+          gl_FragColor = vec4(mix(hist, texture(tCur, vUv).rgb, uAlpha), 1.0);
         }`,
     });
     this.accumQuad = new FullScreenQuad(this.accumMat);
@@ -287,6 +301,7 @@ export class VolumePass extends Pass {
     a.tCur.value = this.target.texture;
     a.tHist.value = prev.texture;
     a.uAlpha.value = this.fresh ? 1 : moved ? 0.6 : 0.25;
+    a.uTexel.value.set(1 / this.target.width, 1 / this.target.height);
     this.fresh = false;
     renderer.setRenderTarget(next);
     this.accumQuad.render(renderer);
