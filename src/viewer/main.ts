@@ -25,9 +25,20 @@ const sync = connectSync(store, { channel, role: 'output' });
 const sim = new Simulation(store);
 
 // ビューア独自の設定（同期しない）
-interface ViewerSettings { angle: number; haze: number; distance: number; bloom: number; target: TargetKind }
+interface ViewerSettings {
+  angle: number;
+  haze: number;
+  distance: number;
+  bloom: number;
+  smoke: number;
+  grain: number;
+  target: TargetKind;
+}
 const RIG_KEY = 'laser:viewer';
-const vs: ViewerSettings = { angle: 40, haze: 1, distance: 8, bloom: 1, target: 'wall', ...loadLocal<ViewerSettings>(RIG_KEY) };
+const vs: ViewerSettings = {
+  angle: 40, haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, target: 'wall',
+  ...loadLocal<ViewerSettings>(RIG_KEY),
+};
 const rig: Rig = { halfAngle: 0, distance: 0, haze: 0 };
 const applyRig = () => {
   rig.halfAngle = vs.angle / 2 * Math.PI / 180;
@@ -64,6 +75,11 @@ const placeWall = () => surfaces.build(vs.target, vs.distance);
 placeWall();
 
 const beams = new Beams(rig, surfaces);
+const applySmoke = () => {
+  beams.smoke.uSmoke.value = vs.smoke;
+  beams.smoke.uGrain.value = vs.grain;
+};
+applySmoke();
 scene.add(beams.group);
 
 const composer = new EffectComposer(renderer);
@@ -90,6 +106,7 @@ startLoop(dt => {
   const s = store.get();
   if (s.mode === 'scan') beams.fromScanner(sim.scanner, s, sim.exposureTime());
   else beams.fromFrame(sim.currentFrame(), s);
+  beams.smoke.uTime.value = performance.now() / 1000;
   controls.update();
   composer.render();
 });
@@ -101,6 +118,8 @@ function buildRigPanel() {
     ['haze', 'ヘイズ', 0.1, 5, 0.05],
     ['distance', '壁までの距離', 2, 20, 0.5],
     ['bloom', 'ブルーム', 0, 3, 0.05],
+    ['smoke', 'スモーク', 0, 1, 0.05],
+    ['grain', 'スモークの粒', 0.2, 2, 0.05],
   ];
   panel.innerHTML = '<h3>3D</h3>';
   const targetRow = document.createElement('label');
@@ -124,6 +143,7 @@ function buildRigPanel() {
       applyRig();
       placeWall();
       bloom.strength = vs.bloom;
+      applySmoke();
       saveLocal(RIG_KEY, vs);
       show();
     });

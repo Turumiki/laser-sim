@@ -62,26 +62,81 @@ class Buffer {
 
 const additive = { vertexColors: true, transparent: true, blending: AdditiveBlending, depthWrite: false } as const;
 
+// ヘイズの濃さのむら。ノイズを少し歪ませて渦のように流す。
+// 濃い所ほどビームが明るく見える（smoke=0 なら一様なヘイズ）
+const SMOKE_GLSL = `
+  uniform float uTime;
+  uniform float uSmoke;
+  uniform float uGrain;
+  float hash(vec3 p) {
+    p = fract(p * 0.3183099 + 0.1);
+    p *= 17.0;
+    return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+  }
+  float noise(vec3 x) {
+    vec3 i = floor(x), f = fract(x);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(mix(hash(i), hash(i + vec3(1, 0, 0)), f.x), mix(hash(i + vec3(0, 1, 0)), hash(i + vec3(1, 1, 0)), f.x), f.y),
+      mix(mix(hash(i + vec3(0, 0, 1)), hash(i + vec3(1, 0, 1)), f.x), mix(hash(i + vec3(0, 1, 1)), hash(i + vec3(1, 1, 1)), f.x), f.y),
+      f.z);
+  }
+  float fbm(vec3 p) {
+    return 0.5 * noise(p) + 0.25 * noise(p * 2.03 + 1.7) + 0.125 * noise(p * 4.1 + 9.2);
+  }
+  float smoke(vec3 w) {
+    // ヘイズは横に広がって層になりやすいので、縦方向を詰めて筋っぽくする
+    vec3 p = w * uGrain * vec3(0.7, 1.8, 0.7) + vec3(uTime * 0.05, uTime * 0.03, -uTime * 0.04);
+    p += 2.0 * vec3(fbm(p + 3.1), fbm(p + 7.4), fbm(p + 1.3)) - 1.0;
+    float d = smoothstep(0.25, 0.65, fbm(p));
+    return mix(1.0, d * 2.0, uSmoke);
+  }
+`;
+
+export interface SmokeUniforms {
+  uTime: { value: number };
+  uSmoke: { value: number };
+  uGrain: { value: number };
+}
+
+const beamVertex = `
+  varying vec3 vColor;
+  varying vec3 vView;
+  varying vec3 vWorld;
+  void main() {
+    vColor = color;
+    vWorld = (modelMatrix * vec4(position, 1.0)).xyz;
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    vView = mv.xyz;
+    gl_Position = projectionMatrix * mv;
+  }`;
+
 // 光の膜は、斜めから見るほどヘイズの中を長く通して見るので明るく見える（円錐の縁が明るいのはこのため）
-const sheetMaterial = () => new ShaderMaterial({
+const sheetMaterial = (uniforms: SmokeUniforms) => new ShaderMaterial({
   ...additive,
   side: DoubleSide,
-  vertexShader: `
+  uniforms: { ...uniforms },
+  vertexShader: beamVertex,
+  fragmentShader: SMOKE_GLSL + `
     varying vec3 vColor;
     varying vec3 vView;
-    void main() {
-      vColor = color;
-      vec4 mv = modelViewMatrix * vec4(position, 1.0);
-      vView = mv.xyz;
-      gl_Position = projectionMatrix * mv;
-    }`,
-  fragmentShader: `
-    varying vec3 vColor;
-    varying vec3 vView;
+    varying vec3 vWorld;
     void main() {
       vec3 n = normalize(cross(dFdx(vView), dFdy(vView)));
       float c = abs(dot(n, normalize(-vView)));
-      gl_FragColor = vec4(vColor / max(c, 0.12), 1.0);
+      gl_FragColor = vec4(vColor / max(c, 0.12) * smoke(vWorld), 1.0);
+    }`,
+});
+
+const rayMaterial = (uniforms: SmokeUniforms) => new ShaderMaterial({
+  ...additive,
+  uniforms: { ...uniforms },
+  vertexShader: beamVertex,
+  fragmentShader: SMOKE_GLSL + `
+    varying vec3 vColor;
+    varying vec3 vWorld;
+    void main() {
+      gl_FragColor = vec4(vColor * smoke(vWorld), 1.0);
     }`,
 });
 
@@ -96,13 +151,14 @@ export class Beams {
   private scale = 1;
 
   private surfaces: Surfaces;
+  readonly smoke: SmokeUniforms = { uTime: { value: 0 }, uSmoke: { value: 0.6 }, uGrain: { value: 0.6 } };
 
   constructor(rig: Rig, surfaces: Surfaces) {
     this.rig = rig;
     this.surfaces = surfaces;
     this.group.add(
-      new Mesh(this.sheets.geo, sheetMaterial()),
-      new LineSegments(this.rays.geo, new LineBasicMaterial(additive)),
+      new Mesh(this.sheets.geo, sheetMaterial(this.smoke)),
+      new LineSegments(this.rays.geo, rayMaterial(this.smoke)),
       new LineSegments(this.wall.geo, new LineBasicMaterial(additive)),
     );
     for (const o of this.group.children) o.frustumCulled = false;
