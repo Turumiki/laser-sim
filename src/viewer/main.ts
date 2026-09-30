@@ -57,7 +57,6 @@ function layout(count: number, spacing: number, mode: Layout): Projector[] {
 
 interface ViewerSettings {
   quality: Quality;
-  angle: number;
   haze: number;
   distance: number;
   bloom: number;
@@ -71,12 +70,13 @@ interface ViewerSettings {
 }
 const RIG_KEY = 'laser:viewer';
 const vs: ViewerSettings = {
-  quality: 'mid', angle: 40, haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, extinction: 0.3, target: 'wall', count: 1, spacing: 2, layout: 'parallel',
+  quality: 'mid', haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, extinction: 0.3, target: 'wall', count: 1, spacing: 2, layout: 'parallel',
   ...loadLocal<ViewerSettings>(RIG_KEY),
 };
 const rig: Rig = { halfAngle: 0, distance: 0, haze: 0 };
 const applyRig = () => {
-  rig.halfAngle = vs.angle / 2 * Math.PI / 180;
+  // 走査角はレーザー機の設定（操作画面と共有）
+  rig.halfAngle = store.get().scanAngle / 2 * Math.PI / 180;
   rig.distance = vs.distance;
   rig.haze = vs.haze;
 };
@@ -171,6 +171,7 @@ buildRigPanel();
 
 startLoop(dt => {
   sim.update(dt);
+  applyRig();
   sim.syncAnim(sync.time.animNow());
   const s = store.get();
   if (s.mode === 'scan') beams.fromScanner(sim.scanner, s, sim.exposureTime());
@@ -185,7 +186,6 @@ function buildRigPanel() {
   const rows: [Exclude<keyof ViewerSettings, 'target' | 'quality' | 'layout'>, string, number, number, number][] = [
     ['count', '台数', 1, 8, 1],
     ['spacing', '間隔', 0.5, 10, 0.5],
-    ['angle', '走査角', 10, 80, 1],
     ['haze', 'ヘイズ', 0.1, 5, 0.05],
     ['distance', '壁までの距離', 2, 150, 0.5],
     ['bloom', 'ブルーム', 0, 3, 0.05],
@@ -242,7 +242,7 @@ function buildRigPanel() {
     const row = document.createElement('label');
     const input = Object.assign(document.createElement('input'), { type: 'range', min, max, step, value: vs[key] });
     const out = document.createElement('output');
-    const show = () => { out.textContent = key === 'angle' ? `${vs[key]}°` : String(vs[key]); };
+    const show = () => { out.textContent = String(vs[key]); };
     input.addEventListener('input', () => {
       vs[key] = Number(input.value);
       applyRig();

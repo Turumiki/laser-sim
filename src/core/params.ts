@@ -21,6 +21,7 @@ export interface Settings {
   scannerK: number;
   damping: number;
   colorShift: number;
+  scanAngle: number;
   density: number;
   animSpeed: number;
   timeScale: number;
@@ -113,6 +114,7 @@ export const PARAMS: readonly ParamDef[] = [
   { kind: 'number', key: 'scannerK', label: 'スキャナ性能', hint: 'ILDAテストパターンを正しく描ける pps（走査角8°）。低いほど角が丸くなり、円が小さくなる', group: 'projector', min: 5, max: 80, digits: 0, unit: 'kpps' },
   { kind: 'number', key: 'damping', label: '減衰', hint: 'ミラーの減衰（ダンピング）。小さいと角で行き過ぎて揺れ（オーバーシュート）、大きいと角が丸くなる', group: 'projector', min: 0.2, max: 1.5, digits: 2 },
   { kind: 'number', key: 'colorShift', label: 'カラーシフト', hint: '色（点灯・消灯を含む）を座標に対して遅らせる時間。ミラーの遅れに合わせる補正。合っていないと角や線の端で色がはみ出す', group: 'projector', min: -200, max: 500, digits: 0, unit: 'µs' },
+  { kind: 'number', key: 'scanAngle', label: '最大走査角', hint: 'プロジェクターが振れる最大の角度（光学角）。映像の正方形の幅がこの角度になる。Unityのスポットライトの角度はこれに合わせる。大きいほどミラーを大きく振るので、同じサイズでも図形が崩れやすい', group: 'projector', min: 5, max: 90, digits: 0, unit: '°' },
   { kind: 'number', key: 'beam', label: 'ビーム径', hint: 'ビームの太さ。FHD換算のpx', group: 'projector', min: 0.5, max: 10, digits: 1, unit: 'px' },
 
   { kind: 'enum', key: 'exposureShape', label: '露光方式', hint: 'シャッター: 露光時間内の光を均等に積算する（カメラ）。残像: 古い光ほど暗くなる（目）', group: 'camera', options: [
@@ -156,6 +158,7 @@ export const DEFAULTS: Readonly<Settings> = {
   // 30Kのスキャナを30kppsでILDAテスト風に合わせた値（円が四角に接する）
   damping: 0.6,
   colorShift: 80,
+  scanAngle: 40,
   density: 0.025,
   animSpeed: 1,
   timeScale: 1,

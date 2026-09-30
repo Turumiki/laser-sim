@@ -7,6 +7,8 @@ interface ScanParams {
   scannerK: number; // kpps
   damping: number;
   colorShift: number; // µs
+  scanAngle: number; // 光学角（全幅）
+  size: number;
   animSpeed: number;
 }
 
@@ -19,6 +21,9 @@ const BASE_DELAY = 40;
 
 // スキャナ性能(kpps)からミラーの固有振動数への換算。30K ≒ 1.5kHz
 const HZ_PER_KPPS = 50;
+// ミラーが振れる速さの上限（光学角 °/s）。30Kで15000°/s。
+// ILDAテストパターンを走査角8°で描けて、それより大きく描くと崩れ始めるくらいの値
+const DEG_PER_SEC_PER_KPPS = 500;
 
 // ガルバノスキャナの再現。点を1つずつpps間隔で出力し、ミラーは「ばね＋おもり＋減衰」として追従する。
 // 通った位置はリングバッファに残し、描画側が露光時間ぶんだけ読む
@@ -72,6 +77,9 @@ export class Scanner {
     // 1点の間に数回に分けて積分する（速いミラーでも発散しないように）
     const sub = Math.max(1, Math.ceil(w * dtp / 0.25));
     const h = dtp / sub;
+    // 速さの上限を点の座標の単位に直す（座標1 = 正方形の半分 = 最大走査角の半分 × サイズ）
+    const vmax = DEG_PER_SEC_PER_KPPS * p.scannerK / (p.scanAngle / 2 * p.size);
+    const clamp = (v: number) => (v > vmax ? vmax : v < -vmax ? -vmax : v);
     const shift = Math.max(-BASE_DELAY, Math.min(BASE_DELAY, Math.round(p.colorShift * 1e-6 * p.pps)));
 
     const f = this.frame;
@@ -94,8 +102,8 @@ export class Scanner {
       const ci = (c - BASE_DELAY - shift + CMD) & (CMD - 1);
       const tx = this.cx[pi], ty = this.cy[pi];
       for (let s = 0; s < sub; s++) {
-        this.vx += (w * w * (tx - this.px) - 2 * zeta * w * this.vx) * h;
-        this.vy += (w * w * (ty - this.py) - 2 * zeta * w * this.vy) * h;
+        this.vx = clamp(this.vx + (w * w * (tx - this.px) - 2 * zeta * w * this.vx) * h);
+        this.vy = clamp(this.vy + (w * w * (ty - this.py) - 2 * zeta * w * this.vy) * h);
         this.px += this.vx * h;
         this.py += this.vy * h;
       }
