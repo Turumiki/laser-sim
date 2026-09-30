@@ -65,20 +65,26 @@ function channelList() {
   return [...all].sort();
 }
 
+// 対象のチャンネル。channels に名前の配列があればそれだけ、なければ全部
+function targetsOf(msg: Record<string, unknown>) {
+  if (!Array.isArray(msg.channels)) return channelList();
+  return msg.channels.filter((c): c is string => typeof c === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(c) && !RESERVED.has(c));
+}
+
 function showCommand(ch: string, msg: Record<string, unknown>) {
   if (msg.action === 'play') shows.play(ch, msg.id);
   else if (msg.action === 'stop') shows.stop(ch);
   else if (msg.action === 'save') shows.saveCustom(ch, msg.show);
   else if (msg.action === 'playAll') {
-    // 全チャンネルを同じ瞬間に始め、アニメーションの時間軸も頭に揃える
+    // 全チャンネル（channels の指定があればそれだけ）を同じ瞬間に始め、アニメーションの時間軸も頭に揃える
     const t0 = Date.now();
-    for (const c of channelList()) {
+    for (const c of targetsOf(msg)) {
       if (!shows.play(c, msg.id, t0)) continue;
       clocks.reset(c, merged(c), t0);
       broadcast(c, {}, null, true);
     }
   } else if (msg.action === 'stopAll') {
-    for (const c of channelList()) shows.stop(c);
+    for (const c of targetsOf(msg)) shows.stop(c);
   }
 }
 

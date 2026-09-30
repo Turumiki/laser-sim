@@ -42,6 +42,18 @@ curl -X POST http://localhost:8765/api/show -d '{"action":"stop"}'
 
 組み込みのショーは `opening`、`festival`、`beams`、`graphics`。操作画面で作ったものは `custom`。
 
+複数のチャンネルを同じ瞬間に始める（`channels` を省くと全チャンネル）:
+
+```sh
+curl -X POST http://localhost:8765/api/show -d '{"action":"playAll","id":"custom","channels":["arena-l","arena-c","arena-r"]}'
+```
+
+3Dビューアは、URLで会場や台の並べ方を指定できる:
+
+```
+/viewer.html?target=arena&count=6&spacing=6&layout=mirror&assign=arena-l,arena-l,arena-c,arena-c,arena-r,arena-r&view=foh
+```
+
 チャンネルを分けるときは `?ch=名前`（操作画面、出力、APIで共通）。
 
 ## 開発

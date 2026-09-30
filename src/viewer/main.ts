@@ -121,6 +121,21 @@ const vs: ViewerSettings = {
 if (!VIEWS.some(v => v.id === vs.view)) vs.view = 'audience';
 // URLでチャンネルを指定して開いたときは、それを使う
 if (params.has('ch')) vs.channels = [channel];
+// URLで会場や台の並べ方を指定できる（例: ?target=arena&count=6&layout=mirror&assign=a,a,b,b,c,c&view=foh）
+{
+  const q = (k: string) => params.get(k);
+  if (TARGETS.some(t => t.id === q('target'))) vs.target = q('target') as TargetKind;
+  if (LAYOUTS.some(l => l.id === q('layout'))) vs.layout = q('layout') as Layout;
+  if (VIEWS.some(v => v.id === q('view'))) vs.view = q('view') as View;
+  const num = (k: string, min: number, max: number) => {
+    const n = Number(q(k));
+    return q(k) !== null && Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : null;
+  };
+  vs.count = num('count', 1, 8) ?? vs.count;
+  vs.spacing = num('spacing', 0.5, 10) ?? vs.spacing;
+  vs.distance = num('distance', 2, 150) ?? (q('target') && ROOMS[vs.target] ? ROOMS[vs.target]!.depth : vs.distance);
+  if (q('assign')) vs.channels = q('assign')!.split(',').map(t => t.trim());
+}
 // 以前はカンマ区切りの文字で持っていた
 if (typeof vs.channels === 'string') vs.channels = (vs.channels as string).split(',').map(t => t.trim());
 useChannels();
