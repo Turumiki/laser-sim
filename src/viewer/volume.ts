@@ -76,7 +76,15 @@ export class VolumePass extends Pass {
   private compositeQuad: FullScreenQuad;
   private volumeMat: ShaderMaterial;
   private compositeMat: ShaderMaterial;
+  // 今回の光と、前のフレームまでを混ぜた結果（交互に使う）
   private target = new WebGLRenderTarget(1, 1, { type: HalfFloatType });
+  private history = [new WebGLRenderTarget(1, 1, { type: HalfFloatType }), new WebGLRenderTarget(1, 1, { type: HalfFloatType })];
+  private accumQuad: FullScreenQuad;
+  private accumMat: ShaderMaterial;
+  private frame = 0;
+  private fresh = true;
+  private lastView = new Matrix4();
+  private lastProj = new Matrix4();
   private camera: PerspectiveCamera;
   // 空間の光を計算する解像度（画面に対する割合）
   scale = 0.35;
@@ -104,33 +112,66 @@ export class VolumePass extends Pass {
 
     this.volumeMat = new ShaderMaterial({
       // スモークはHighでも作り置きの模様を使う（その場で計算すると、何十回も調べるこの処理では重すぎる）
-      uniforms: { ...haze, ...shared, uProcedural: { value: 0 }, uSteps: { value: 48 }, uMaxT: { value: 60 }, uLod: { value: 2.5 } },
+      uniforms: { ...haze, ...shared, uProcedural: { value: 0 }, uFrame: { value: 0 }, uSteps: { value: 24 }, uMaxT: { value: 60 }, uLod: { value: 2.5 } },
       vertexShader: VERTEX,
       fragmentShader: SMOKE_GLSL + COMMON + `
         uniform float uSteps;
         uniform float uMaxT;
         uniform float uLod;
+        uniform float uFrame;
+
+        // 隣り合う画素で偏りにくいノイズ（インターリーブド・グラディエント・ノイズ）。フレームごとにずらす
+        float ign(vec2 p) {
+          return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715))));
+        }
+
+        // a + b*t <= 0 を満たす t だけに区間を狭める
+        void clipT(float a, float b, inout float t0, inout float t1) {
+          if (abs(b) < 1e-6) {
+            if (a > 0.0) t1 = -1.0;
+            return;
+          }
+          float t = -a / b;
+          if (b > 0.0) t1 = min(t1, t); else t0 = max(t0, t);
+        }
+
         void main() {
           vec3 wp = surfacePos();
           vec3 dir = normalize(wp - uCam);
           float tEnd = min(distance(wp, uCam), uMaxT);
-          float dt = tEnd / uSteps;
-          // 段差の縞が出ないよう、進み始めを画素ごとに少しずらす
-          float jitter = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
+          float jitter = ign(gl_FragCoord.xy + uFrame * vec2(5.588238, 3.1));
           vec3 acc = vec3(0.0);
-          for (int i = 0; i < 128; i++) {
-            if (float(i) >= uSteps) break;
-            vec3 p = uCam + dir * ((float(i) + jitter) * dt);
-            float dens = mix(1.0, smoke1(p) * 1.7, uSmoke);
-            for (int j = 0; j < ${MAX}; j++) {
-              if (j >= uCount) break;
-              vec2 uv; vec3 rel;
-              if (!project(j, p, uv, rel)) continue;
+          for (int j = 0; j < ${MAX}; j++) {
+            if (j >= uCount) break;
+            // 視線をプロジェクターの向きに直す。光の範囲（四角錐）に入って出るまでの区間を式で求め、その中だけを調べる
+            vec2 cs = uRot[j];
+            vec3 a = uCam - uPos[j];
+            vec3 la = vec3(a.x * cs.x - a.z * cs.y, a.y, a.x * cs.y + a.z * cs.x);
+            vec3 lb = vec3(dir.x * cs.x - dir.z * cs.y, dir.y, dir.x * cs.y + dir.z * cs.x);
+            float h = uHalfTan[j];
+            float t0 = 0.0, t1 = tEnd;
+            clipT(la.z, lb.z, t0, t1);
+            clipT(la.x + h * la.z, lb.x + h * lb.z, t0, t1);
+            clipT(-la.x + h * la.z, -lb.x + h * lb.z, t0, t1);
+            clipT(la.y + h * la.z, lb.y + h * lb.z, t0, t1);
+            clipT(-la.y + h * la.z, -lb.y + h * lb.z, t0, t1);
+            if (t1 <= t0) continue;
+            float dt = (t1 - t0) / uSteps;
+            for (int i = 0; i < 64; i++) {
+              if (float(i) >= uSteps) break;
+              float t = t0 + (float(i) + jitter) * dt;
+              vec3 l = la + lb * t;
+              vec2 uv = l.xy / (-l.z) / h;
+              uv.x *= uMirror[j];
+              vec3 rel = a + dir * t;
+              vec3 p = uCam + dir * t;
+              float dens = mix(1.0, smoke1(p) * 1.7, uSmoke);
               // スポットライトは距離の2乗で弱まる。細い線を取りこぼさないよう、少しぼかした段を読む
-              acc += cookie(uCookieIndex[j], uv * 0.5 + 0.5, uLod) * airlight(rel, dir) * dens / max(dot(rel, rel), 0.25);
+              acc += cookie(uCookieIndex[j], clamp(uv * 0.5 + 0.5, 0.0, 1.0), uLod) * airlight(rel, dir) * dens
+                / max(dot(rel, rel), 0.25) * dt;
             }
           }
-          gl_FragColor = vec4(acc * dt * uIntensity, 1.0);
+          gl_FragColor = vec4(acc * uIntensity, 1.0);
         }`,
     });
 
@@ -166,6 +207,20 @@ export class VolumePass extends Pass {
     // 両方の材質で同じ値を使う
     for (const k of Object.keys(shared)) this.compositeMat.uniforms[k] = this.volumeMat.uniforms[k];
 
+    // 調べる位置をフレームごとに変えているので、前の結果と混ぜると粒々が平均されて滑らかになる
+    this.accumMat = new ShaderMaterial({
+      uniforms: { tCur: { value: null }, tHist: { value: null }, uAlpha: { value: 1 } },
+      vertexShader: VERTEX,
+      fragmentShader: `
+        uniform sampler2D tCur;
+        uniform sampler2D tHist;
+        uniform float uAlpha;
+        varying vec2 vUv;
+        void main() {
+          gl_FragColor = vec4(mix(texture(tHist, vUv).rgb, texture(tCur, vUv).rgb, uAlpha), 1.0);
+        }`,
+    });
+    this.accumQuad = new FullScreenQuad(this.accumMat);
     this.volumeQuad = new FullScreenQuad(this.volumeMat);
     this.compositeQuad = new FullScreenQuad(this.compositeMat);
   }
@@ -193,7 +248,10 @@ export class VolumePass extends Pass {
   setSize(width: number, height: number) {
     this.w = width;
     this.h = height;
-    this.target.setSize(Math.max(1, Math.round(width * this.scale)), Math.max(1, Math.round(height * this.scale)));
+    const w = Math.max(1, Math.round(width * this.scale)), h = Math.max(1, Math.round(height * this.scale));
+    this.target.setSize(w, h);
+    for (const t of this.history) t.setSize(w, h);
+    this.fresh = true;
   }
 
   setScale(scale: number) {
@@ -208,13 +266,28 @@ export class VolumePass extends Pass {
     u.uInvView.value.copy(this.camera.matrixWorld);
     u.uCam.value.setFromMatrixPosition(this.camera.matrixWorld);
 
+    u.uFrame.value = this.frame++ % 64;
     renderer.setRenderTarget(this.target);
     this.volumeQuad.render(renderer);
 
+    // カメラが動いている間は前の結果をあまり混ぜない（残像にならないように）
+    const moved = !this.lastView.equals(this.camera.matrixWorld) || !this.lastProj.equals(this.camera.projectionMatrix);
+    this.lastView.copy(this.camera.matrixWorld);
+    this.lastProj.copy(this.camera.projectionMatrix);
+    const [prev, next] = this.history;
+    const a = this.accumMat.uniforms;
+    a.tCur.value = this.target.texture;
+    a.tHist.value = prev.texture;
+    a.uAlpha.value = this.fresh ? 1 : moved ? 0.6 : 0.25;
+    this.fresh = false;
+    renderer.setRenderTarget(next);
+    this.accumQuad.render(renderer);
+    this.history.reverse();
+
     const c = this.compositeMat.uniforms;
     c.tDiffuse.value = readBuffer.texture;
-    c.tVolume.value = this.target.texture;
-    c.uTexel.value.set(1 / this.target.width, 1 / this.target.height);
+    c.tVolume.value = next.texture;
+    c.uTexel.value.set(1 / next.width, 1 / next.height);
     renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
     this.compositeQuad.render(renderer);
   }
@@ -224,6 +297,9 @@ export class VolumePass extends Pass {
     this.compositeMat.dispose();
     this.volumeQuad.dispose();
     this.compositeQuad.dispose();
+    this.accumMat.dispose();
+    this.accumQuad.dispose();
     this.target.dispose();
+    for (const t of this.history) t.dispose();
   }
 }

@@ -257,7 +257,8 @@ const cookies = new Cookies();
 // 映像の描き方の明るさ。ベクターの見え方とだいたい揃うように合わせた値
 const VIDEO_GAIN = 14;
 // 積算の細かさ（視線に沿って何回調べるか）
-const STEPS: Record<Quality, number> = { high: 96, mid: 48, low: 24 };
+// 光の範囲の中だけを調べるので、1台あたりの回数（範囲の外は調べない）
+const STEPS: Record<Quality, number> = { high: 40, mid: 24, low: 14 };
 // 空間の光を計算する解像度（画面に対する割合）。光の筋はもともとぼやけているので、下げても見た目はほとんど変わらない
 const VOLUME_SCALE: Record<Quality, number> = { high: 0.5, mid: 0.35, low: 0.25 };
 let bloom: UnrealBloomPass;
