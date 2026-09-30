@@ -79,8 +79,8 @@ const VIEWS: { id: View; label: string }[] = [
 // 描き方。ベクター: 点のデータから直接ビームを出す（実機に近い） / 映像: Unityに渡すのと同じ映像をクッキーとして投影する
 type RenderMode = 'vector' | 'video';
 const RENDER_MODES: { id: RenderMode; label: string }[] = [
-  { id: 'vector', label: 'ベクター（点のデータから）' },
-  { id: 'video', label: '映像（Unityのクッキー方式）' },
+  { id: 'vector', label: '点のデータから直接' },
+  { id: 'video', label: 'クッキー（出力の映像）' },
 ];
 
 const LAYOUTS: { id: Layout; label: string }[] = [
@@ -419,10 +419,10 @@ function buildRigPanel() {
     ['haze', 'ヘイズ', 0.1, 5, 0.05],
     ['distance', '壁までの距離', 2, 150, 0.5],
     ['bloom', 'ブルーム', 0, 3, 0.05],
-    ['smoke', 'スモーク', 0, 1, 0.05],
-    ['grain', 'スモークの粒', 0.2, 2, 0.05],
+    ['smoke', 'ヘイズのむら', 0, 1, 0.05],
+    ['grain', 'むらの細かさ', 0.2, 2, 0.05],
     ['extinction', 'ヘイズの減衰', 0, 1, 0.05],
-    ['flat', '遠くの減衰を弱める', 0, 1, 0.05],
+    ['flat', '距離減衰の補正（クッキー）', 0, 1, 0.05],
   ];
   panel.innerHTML = '<h3>3D</h3>';
   const qualityRow = document.createElement('label');
@@ -446,7 +446,7 @@ function buildRigPanel() {
     vs.render = modeSel.value as RenderMode;
     saveLocal(RIG_KEY, vs);
   });
-  modeRow.title = 'ベクター: 点のデータから直接ビームを出す（実機に近い）。映像: Unityに渡すのと同じ映像を、スポットライトのクッキーとして投影する（Unityで起きることの再現）';
+  modeRow.title = '点のデータから直接: ビームを点のデータから直接出す（実機に近い）。クッキー: 出力と同じ映像（クッキー用）を、スポットライトのクッキーとして投影する（Unityなどで起きることの再現）';
   modeRow.append('描き方', modeSel);
   panel.append(modeRow);
 

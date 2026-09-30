@@ -57,8 +57,8 @@ export const GROUPS: readonly { id: GroupId; label: string }[] = [
   { id: 'projector', label: 'レーザー機' },
   { id: 'camera', label: '見え方' },
   { id: 'output', label: '出力' },
-  // 検証用の表示。本番の素材には入れない
-  { id: 'debug', label: '観察用' },
+  // スロー再生や、ビームの位置・消灯中の経路を重ねる表示。本番の素材には入れない
+  { id: 'debug', label: '補助表示' },
 ];
 
 interface ParamBase {
@@ -118,7 +118,7 @@ export const PARAMS: readonly ParamDef[] = [
   ] },
   { kind: 'number', key: 'pps', label: 'pps', hint: '1秒あたりに出力する点の数。スキャナの性能はILDAテストパターンを描ける pps で表す', group: 'projector', min: 1000, max: 60000, digits: 0 },
   { kind: 'number', key: 'scannerK', label: 'スキャナ性能', hint: 'ILDAテストパターンを正しく描ける pps（走査角8°）。低いほど角が丸くなり、円が小さくなる', group: 'projector', min: 5, max: 80, digits: 0, unit: 'kpps' },
-  { kind: 'number', key: 'damping', label: '減衰', hint: 'ミラーの減衰（ダンピング）。小さいと角で行き過ぎて揺れ（オーバーシュート）、大きいと角が丸くなる', group: 'projector', min: 0.2, max: 1.5, digits: 2 },
+  { kind: 'number', key: 'damping', label: 'ダンピング', hint: 'ミラーの揺れを抑える強さ。小さいと角で行き過ぎて揺れ（オーバーシュート）、大きいと角が丸くなる', group: 'projector', min: 0.2, max: 1.5, digits: 2 },
   { kind: 'number', key: 'colorShift', label: 'カラーシフト', hint: '色（点灯・消灯を含む）を座標に対して遅らせる時間。ミラーの遅れに合わせる補正。合っていないと角や線の端で色がはみ出す', group: 'projector', min: -200, max: 500, digits: 0, unit: 'µs' },
   { kind: 'number', key: 'scanAngle', label: '最大走査角', hint: 'プロジェクターが振れる最大の角度（光学角）。映像の正方形の幅がこの角度になる。Unityのスポットライトの角度はこれに合わせる。大きいほどミラーを大きく振るので、同じサイズでも図形が崩れやすい', group: 'projector', min: 5, max: 90, digits: 0, unit: '°' },
   { kind: 'bool', key: 'pincushion', label: '糸巻きゆがみ', hint: 'X用とY用の2枚のミラーで振るため、平面に映すと四隅が外へ引っぱられた形（糸巻き型）になる。走査角が大きいほど目立つ', group: 'projector' },
@@ -130,6 +130,8 @@ export const PARAMS: readonly ParamDef[] = [
   ] },
   { kind: 'bool', key: 'exposureSync', label: '1コマに合わせる', hint: '露光時間を映像の1コマ（1 ÷ 映像のfps）にする。コマの間に写らない時間ができない。映像のfpsは「出力」で設定', group: 'camera' },
   { kind: 'number', key: 'exposure', label: '露光時間', hint: '光を積算する時間。16.7ms（1/60秒）で1コマ分', group: 'camera', inactive: s => s.exposureSync, min: 0.2, max: 200, log: true, digits: 1, unit: 'ms' },
+  { kind: 'bool', key: 'rolling', label: 'ローリング', hint: 'ローリングシャッター。スマホや一般的なビデオカメラのように、画面を上の行から順に時間をずらして撮る。速く動くレーザーは形が曲がったり波打ったりして写る。スキャンのときだけ効く。クッキー用では使わない', group: 'camera', inactive: s => s.mode !== 'scan' || s.look === 'source' },
+  { kind: 'number', key: 'readout', label: '読み出し時間', hint: '画面の上から下まで読み出すのにかかる時間。スマホでだいたい10〜30ms', group: 'camera', inactive: s => !s.rolling || s.mode !== 'scan' || s.look === 'source', min: 1, max: 40, digits: 1, unit: 'ms' },
   { kind: 'bool', key: 'eye', label: '目の感度', hint: '色ごとの見かけの明るさ。人の目は緑に敏感で、同じ出力でも赤や青は暗く見える（一般的なRGB機: 赤638nm・緑520nm・青450nm）。Unityに渡す映像は、狙った色のままにしたいならオフ', group: 'camera' },
   { kind: 'number', key: 'glow', label: 'グロー', hint: 'ビーム周辺のにじみ。ヘイズやレンズでの散乱に相当。クッキー用では使わない', group: 'camera', inactive: s => s.look === 'source', min: 0, max: 3, digits: 2 },
   { kind: 'number', key: 'bright', label: '明るさ', hint: '露光量。上げると強く当たった部分が白く飛ぶ', group: 'camera', min: 0.1, max: 5, log: true, digits: 2 },
@@ -151,8 +153,6 @@ export const PARAMS: readonly ParamDef[] = [
   { kind: 'number', key: 'timeScale', label: 'スロー', hint: '時間の進み方。1で実時間', group: 'debug', min: 0.0003, max: 1, log: true, digits: 4, unit: '×' },
   { kind: 'bool', key: 'head', label: '先頭の点', hint: '現在のビーム位置を表示する', group: 'debug' },
   { kind: 'bool', key: 'showBlank', label: 'ブランキング表示', hint: '消灯中の移動経路を灰色で表示する', group: 'debug' },
-  { kind: 'bool', key: 'rolling', label: 'ローリングシャッター', hint: 'スマホや一般的なビデオカメラのように、画面を上の行から順に時間をずらして撮る。速く動くレーザーは形が曲がったり波打ったりして写る。スキャンのときだけ効く。クッキー用では使わない', group: 'debug', inactive: s => s.mode !== 'scan' || s.look === 'source' },
-  { kind: 'number', key: 'readout', label: '読み出し時間', hint: '画面の上から下まで読み出すのにかかる時間。スマホでだいたい10〜30ms', group: 'debug', inactive: s => !s.rolling || s.mode !== 'scan' || s.look === 'source', min: 1, max: 40, digits: 1, unit: 'ms' },
 ];
 
 export const DEFAULTS: Readonly<Settings> = {
@@ -194,16 +194,15 @@ export const DEFAULTS: Readonly<Settings> = {
 };
 
 export const PRESETS: Record<string, { label: string; title: string; values: Partial<Settings> }> = {
-  real: { label: '等速', title: '実機と同じ速さ', values: { timeScale: 1, exposureShape: 'box', exposureSync: true, pps: 30000, head: false, showBlank: false } },
-  slow50: { label: '1/50', title: 'スキャンを1/50の速さで観察', values: { timeScale: 0.02, exposureShape: 'exp', exposureSync: false, exposure: 8, head: true, showBlank: false } },
-  slow500: { label: '1/500', title: 'スキャンを1/500の速さで観察（ブランキング表示つき）', values: { timeScale: 0.002, exposureShape: 'exp', exposureSync: false, exposure: 1.5, head: true, showBlank: true } },
-  lowPps: { label: '低pps', title: '6kppsで描いたときのちらつき', values: { timeScale: 1, exposureShape: 'box', exposureSync: true, pps: 6000, head: false, showBlank: false } },
+  real: { label: '等速', title: '実機と同じ速さ', values: { timeScale: 1, exposureShape: 'box', exposureSync: true, head: false, showBlank: false } },
+  slow50: { label: '1/50', title: 'スキャンを1/50の速さで再生', values: { timeScale: 0.02, exposureShape: 'exp', exposureSync: false, exposure: 8, head: true, showBlank: false } },
+  slow500: { label: '1/500', title: 'スキャンを1/500の速さで再生（ブランキング表示つき）', values: { timeScale: 0.002, exposureShape: 'exp', exposureSync: false, exposure: 1.5, head: true, showBlank: true } },
 };
 
 const byKey = new Map<string, ParamDef>(PARAMS.map(p => [p.key, p]));
 export const paramOf = (key: string) => byKey.get(key);
 
-// 全チャンネル共通の設定のグループ（見え方・出力・観察用）。残り（絵柄・レーザー機）はレーザーごと
+// 全チャンネル共通の設定のグループ（見え方・出力・補助表示）。残り（絵柄・レーザー機）はレーザーごと
 export const SHARED_GROUPS: readonly GroupId[] = ['camera', 'output', 'debug'];
 export const isShared = (key: string) => {
   const p = byKey.get(key);
