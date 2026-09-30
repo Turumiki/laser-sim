@@ -266,11 +266,26 @@ buildComposer();
 const assignBox = document.createElement('div');
 assignBox.className = 'assign';
 let knownChannels: string[] = [];
+// 一覧を取り直しても欄は作り直さず、選択肢だけ入れ替える（開いている選択肢が閉じないように）
+const fillOptions = (sel: HTMLSelectElement, names: string[]) => {
+  const want = [...new Set([...knownChannels, ...names])];
+  const have = [...sel.options].map(o => o.value);
+  if (want.join() === have.join()) return;
+  const value = sel.value;
+  sel.replaceChildren(...want.map(c => new Option(c, c)));
+  sel.value = value;
+};
 const refreshChannels = () =>
   fetch('/api/channels').then(r => r.json()).then((list: string[]) => {
     knownChannels = list;
-    renderAssign();
+    const names = assigned();
+    for (const sel of assignBox.querySelectorAll('select')) {
+      if (document.activeElement !== sel) fillOptions(sel, names);
+    }
   }).catch(() => {});
+// 触ろうとしたとき（開く前）と、ときどき一覧を取り直す
+assignBox.addEventListener('pointerenter', refreshChannels);
+setInterval(refreshChannels, 10000);
 function renderAssign() {
   const names = assigned();
   assignBox.replaceChildren();
@@ -283,10 +298,8 @@ function renderAssign() {
     const row = document.createElement('label');
     row.classList.add('wide');
     const sel = document.createElement('select');
-    for (const c of new Set([...knownChannels, ...names])) sel.add(new Option(c, c));
+    fillOptions(sel, names);
     sel.value = name;
-    // 開くたびに最新の一覧にする
-    sel.addEventListener('focus', refreshChannels, { once: true });
     sel.addEventListener('change', () => {
       const next = assigned();
       next[i] = sel.value;
