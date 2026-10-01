@@ -11,6 +11,17 @@ import { EYE_GAIN, MAX_MIRROR } from '../core/color';
 
 const clampMirror = (v: number) => Math.max(-MAX_MIRROR, Math.min(MAX_MIRROR, v));
 
+// 当たり方を覚えておく格子の細かさ（1辺）。最大走査角40°なら1マス 0.2°くらい
+const GRID = 256;
+interface HitGrid {
+  key: string;
+  // 格子が覆う範囲（tan で ±T）
+  T: number;
+  N: number;
+  // 隅ごとに当たる面の番号（-2: まだ調べていない、-1: 何にも当たらない）
+  ids: Int32Array;
+}
+
 export interface Rig {
   // プロジェクターから壁までの距離
   distance: number;
@@ -327,14 +338,8 @@ export class Beams {
     const ax = clampMirror(x * a), ay = clampMirror(y * a);
     const warp = this.pincushion ? 1 / Math.cos(ay) : 1;
     const tx = Math.tan(ax) * warp * (this.proj.mirror ? -1 : 1), ty = Math.tan(ay);
-    // プロジェクターの向きに合わせる。正面は -z。上下に傾けて（x軸まわり）から、左右に振る（y軸まわり）
     const d = this.dir, o = this.proj.pos;
-    const py = ty * this.pcos + this.psin, pz = ty * this.psin - this.pcos;
-    d[0] = tx * this.cos + pz * this.sin;
-    d[1] = py;
-    d[2] = -tx * this.sin + pz * this.cos;
-    const t = this.surfaces.hit(o, d);
-    this.lastId = this.surfaces.lastId;
+    const t = this.cast(tx, ty);
     // 当たらないビームは一定の長さで止め、先へ行くほど消えていく
     const reach = Number.isFinite(t) ? t : this.rig.distance * 1.2;
     out[0] = o[0] + d[0] * reach;
@@ -342,6 +347,53 @@ export class Beams {
     out[2] = o[2] + d[2] * reach;
     return t;
   }
+
+  // 向き (tx, ty)（プロジェクターから見た tan）を、空間の向きにして this.dir に入れる。
+  // 正面は -z。上下に傾けて（x軸まわり）から、左右に振る（y軸まわり）
+  private aim(tx: number, ty: number) {
+    const d = this.dir;
+    const py = ty * this.pcos + this.psin, pz = ty * this.psin - this.pcos;
+    d[0] = tx * this.cos + pz * this.sin;
+    d[1] = py;
+    d[2] = -tx * this.sin + pz * this.cos;
+  }
+
+  // 向き (tx, ty) のビームが当たるまでの t。lastId に当たった面の番号を入れる。
+  // 会場では、プロジェクターごとに「どの向きがどの面に当たるか」を格子で覚えておき、
+  // 格子の4隅が同じ面に当たるなら、その中は平面との交点だけで済ませる（結果は全部調べたときと同じ）
+  private cast(tx: number, ty: number) {
+    const g = this.grid;
+    if (g && Math.abs(tx) < g.T && Math.abs(ty) < g.T) {
+      const fx = (tx / g.T * 0.5 + 0.5) * g.N, fy = (ty / g.T * 0.5 + 0.5) * g.N;
+      const i = Math.min(g.N - 1, fx | 0), j = Math.min(g.N - 1, fy | 0);
+      const id = this.corner(g, i, j);
+      if (id === this.corner(g, i + 1, j) && id === this.corner(g, i, j + 1) && id === this.corner(g, i + 1, j + 1)) {
+        this.aim(tx, ty);
+        this.lastId = id;
+        return id < 0 ? Infinity : this.surfaces.hitPlane(id, this.proj.pos, this.dir);
+      }
+    }
+    this.aim(tx, ty);
+    const t = this.surfaces.hit(this.proj.pos, this.dir);
+    this.lastId = Number.isFinite(t) ? this.surfaces.lastId : -1;
+    return t;
+  }
+
+  // 格子の隅の向きが当たる面の番号（初めて使うときに調べて覚える。-1 は何にも当たらない）
+  private corner(g: HitGrid, i: number, j: number) {
+    const k = j * (g.N + 1) + i;
+    let id = g.ids[k];
+    if (id === -2) {
+      this.aim((i / g.N * 2 - 1) * g.T, (j / g.N * 2 - 1) * g.T);
+      id = Number.isFinite(this.surfaces.hit(this.proj.pos, this.dir)) ? this.surfaces.lastId : -1;
+      g.ids[k] = id;
+    }
+    return id;
+  }
+
+  // プロジェクターごとの格子。会場・置き場所・向き・振れる範囲が変わったら作り直す
+  private grids = new Map<Projector, HitGrid>();
+  private grid: HitGrid | null = null;
 
   private use(p: Projector, s: Readonly<Settings>) {
     this.proj = p;
@@ -355,17 +407,33 @@ export class Beams {
     this.pcos = Math.cos(p.pitch ?? 0);
     this.psin = Math.sin(p.pitch ?? 0);
     this.sheets.origin = this.rays.origin = this.wall.origin = p.pos;
+    this.grid = null;
+    if (this.surfaces.planar) {
+      // 振れる一番端の向き（糸巻きゆがみで横に広がる分も含める）
+      const a = clampMirror(this.half * this.scale * 1.02);
+      const T = Math.tan(a) / Math.cos(a);
+      const key = `${this.surfaces.version}|${p.pos.join(',')}|${p.yaw}|${p.pitch ?? 0}|${T.toFixed(5)}`;
+      let g = this.grids.get(p);
+      if (!g || g.key !== key) {
+        g = { key, T, N: GRID, ids: new Int32Array((GRID + 1) * (GRID + 1)).fill(-2) };
+        this.grids.set(p, g);
+      }
+      this.grid = g;
+    }
   }
 
   setProjectors(list: readonly Projector[]) {
     this.projectors = list.length ? list : this.projectors;
+    this.grids.clear();
   }
 
   // 2本のビームが別々の面に当たっている（または奥行きが飛んでいる）か。
   // 別の面どうしを膜でそのままつなぐと、当たらないはずの所（箱の横の面など）を光が横切ってしまう
+  // ただし、へこんだ角でつながる面どうし（床と壁など）は、そのままつないでも物の中を通らないので分けない
   private split(ta: number, ia: number, tb: number, ib: number) {
     if (!Number.isFinite(ta) || !Number.isFinite(tb)) return Number.isFinite(ta) !== Number.isFinite(tb);
-    return ia !== ib || Math.abs(ta - tb) > 0.15 * Math.max(ta, tb);
+    if (Math.abs(ta - tb) > 0.15 * Math.max(ta, tb)) return true;
+    return ia !== ib && !this.surfaces.concave(ia, ib);
   }
   private lastId = -1;
   private ia = -1;
@@ -411,7 +479,8 @@ export class Beams {
     const ea = this.ea, eb = this.eb;
     ea.splice(0, 3, ...this.a);
     eb.splice(0, 3, ...this.b);
-    for (let i = 0; i < 8; i++) {
+    // 6回で、線分の1/64まで縁に寄せる（点の間隔より十分細かい）
+    for (let i = 0; i < 6; i++) {
       const m = (lo + hi) / 2;
       const t = this.hit(this.p0[0] + (this.p1[0] - this.p0[0]) * m, this.p0[1] + (this.p1[1] - this.p0[1]) * m, this.tmp);
       const id = this.lastId;

@@ -57,6 +57,23 @@ const sub = (a: readonly number[], b: readonly number[]) => [a[0] - b[0], a[1] -
 // 当たり判定用の三角形（Möller–Trumbore 法で解くための値を前もって持つ）
 interface Tri { a: number[]; e1: number[]; e2: number[]; id: number }
 
+// 三角形と光線の交点（Möller–Trumbore 法）。当たらなければ -1
+function rayTri(t: Tri, o: readonly number[], d: readonly number[], p: number[]) {
+  const { a, e1, e2 } = t;
+  p[0] = d[1] * e2[2] - d[2] * e2[1]; p[1] = d[2] * e2[0] - d[0] * e2[2]; p[2] = d[0] * e2[1] - d[1] * e2[0];
+  const det = dot(e1, p);
+  if (Math.abs(det) < 1e-12) return -1;
+  const inv = 1 / det;
+  const sx = o[0] - a[0], sy = o[1] - a[1], sz = o[2] - a[2];
+  const u = (sx * p[0] + sy * p[1] + sz * p[2]) * inv;
+  if (u < 0 || u > 1) return -1;
+  const qx = sy * e1[2] - sz * e1[1], qy = sz * e1[0] - sx * e1[2], qz = sx * e1[1] - sy * e1[0];
+  const v = (d[0] * qx + d[1] * qy + d[2] * qz) * inv;
+  if (v < 0 || u + v > 1) return -1;
+  const dist = (e2[0] * qx + e2[1] * qy + e2[2] * qz) * inv;
+  return dist > 1e-6 ? dist : -1;
+}
+
 // 多角形を、表が toward を向く順に並べ直す
 function facingPts(p: Poly) {
   const n = cross(sub(p.pts[1], p.pts[0]), sub(p.pts[2], p.pts[0]));
@@ -81,6 +98,8 @@ export class Surfaces {
   private d = 8;
   private room: Room | null = null;
   private tris: Tri[] = [];
+  // 面ごとの三角形
+  private trisOf: Tri[][] = [];
   // プロジェクターから床までの高さ
   floor = DEFAULT_FLOOR;
   // 物体の置き場所（壁の手前）と大きさ
@@ -92,7 +111,48 @@ export class Surfaces {
   private o = new Vector3();
   private w = [0, 0, 0];
 
+  // 形を作り直すたびに増える（ビーム側の当たり方の覚え書きを捨てる合図）
+  version = 0;
+  // 会場の面の平面（法線と n・p）。面の番号で引く
+  private planes: { n: number[]; np: number }[] = [];
+
+  // 会場（平らな面だけ）のときは、面の番号が分かれば平面との交点だけで当たる位置が出せる
+  get planar() {
+    return !!this.room;
+  }
+
+  // 2つの面が「へこんだ角」でつながっているか（床と壁、床と客席の段など）。
+  // へこんだ角なら、両方に当たった2本のビームの間を膜でそのままつないでも、物の中を通らない。
+  // それぞれの面の表側に、もう一方の面の点があれば、へこんだ角とみなす
+  private concaveMemo = new Map<number, boolean>();
+  private polyPts: number[][][] = [];
+  concave(a: number, b: number) {
+    if (a < 0 || b < 0) return false;
+    const key = a < b ? a * 65536 + b : b * 65536 + a;
+    let v = this.concaveMemo.get(key);
+    if (v === undefined) {
+      const front = (p: number, q: number) => {
+        const pl = this.planes[p], len = Math.hypot(pl.n[0], pl.n[1], pl.n[2]);
+        return this.polyPts[q].some(v => (dot(pl.n, v) - pl.np) / len > 0.05);
+      };
+      v = front(a, b) && front(b, a);
+      this.concaveMemo.set(key, v);
+    }
+    return v;
+  }
+
+  // 面 id の平面に当たるまでの t（向こう向きなら Infinity）
+  hitPlane(id: number, o: readonly number[], d: readonly number[]) {
+    const pl = this.planes[id];
+    if (!pl) return Infinity;
+    const den = dot(pl.n, d);
+    if (Math.abs(den) < 1e-12) return Infinity;
+    const t = (pl.np - dot(pl.n, o)) / den;
+    return t > 1e-6 ? t : Infinity;
+  }
+
   build(kind: TargetKind, distance: number) {
+    this.version++;
     this.kind = kind;
     this.d = distance;
     this.room = ROOMS[kind] ?? null;
@@ -105,6 +165,10 @@ export class Surfaces {
     });
     this.group.clear();
     this.tris = [];
+    this.trisOf = [];
+    this.planes = [];
+    this.polyPts = [];
+    this.concaveMemo.clear();
     this.facing = [];
     if (kind === 'none') return;
     if (this.room) {
@@ -157,11 +221,16 @@ export class Surfaces {
     const byMat = new Map<VenueMaterial, number[]>();
     polys.forEach((p, id) => {
       const pts = facingPts(p);
+      const n = cross(sub(pts[1], pts[0]), sub(pts[2], pts[0]));
+      this.planes[id] = { n, np: dot(n, pts[0]) };
+      this.polyPts[id] = pts;
       const list = byMat.get(p.mat) ?? [];
       byMat.set(p.mat, list);
       for (let i = 1; i < pts.length - 1; i++) {
         list.push(...pts[0], ...pts[i], ...pts[i + 1]);
-        this.tris.push({ a: pts[0], e1: sub(pts[i], pts[0]), e2: sub(pts[i + 1], pts[0]), id });
+        const tri = { a: pts[0], e1: sub(pts[i], pts[0]), e2: sub(pts[i + 1], pts[0]), id };
+        this.tris.push(tri);
+        (this.trisOf[id] ??= []).push(tri);
       }
       const edge: number[] = [];
       for (let i = 0; i < pts.length; i++) edge.push(...pts[i], ...pts[(i + 1) % pts.length]);
@@ -223,23 +292,9 @@ export class Surfaces {
 
   private hitTris(o: readonly number[], d: readonly number[]) {
     let best = Infinity;
-    const p = this.w;
     for (const t of this.tris) {
-      const { a, e1, e2 } = t;
-      // p = d × e2
-      p[0] = d[1] * e2[2] - d[2] * e2[1]; p[1] = d[2] * e2[0] - d[0] * e2[2]; p[2] = d[0] * e2[1] - d[1] * e2[0];
-      const det = dot(e1, p);
-      if (Math.abs(det) < 1e-12) continue;
-      const inv = 1 / det;
-      const sx = o[0] - a[0], sy = o[1] - a[1], sz = o[2] - a[2];
-      const u = (sx * p[0] + sy * p[1] + sz * p[2]) * inv;
-      if (u < 0 || u > 1) continue;
-      // q = s × e1
-      const qx = sy * e1[2] - sz * e1[1], qy = sz * e1[0] - sx * e1[2], qz = sx * e1[1] - sy * e1[0];
-      const v = (d[0] * qx + d[1] * qy + d[2] * qz) * inv;
-      if (v < 0 || u + v > 1) continue;
-      const dist = (e2[0] * qx + e2[1] * qy + e2[2] * qz) * inv;
-      if (dist > 1e-6 && dist < best) { best = dist; this.lastId = t.id; }
+      const dist = rayTri(t, o, d, this.w);
+      if (dist > 0 && dist < best) { best = dist; this.lastId = t.id; }
     }
     return best;
   }
