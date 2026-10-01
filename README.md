@@ -77,6 +77,8 @@ curl -X DELETE http://localhost:8765/api/assets/<id>
 /viewer.html?target=arena&count=6&spacing=6&layout=mirror&assign=arena-l,arena-l,arena-c,arena-c,arena-r,arena-r&view=foh
 ```
 
+VRのヘッドセット（PCにつないだもの、またはヘッドセットのブラウザ）があれば、右上の「VRで見る」から会場に入れる。WebXRは https でしか動かないので、別のPCから開くときは https で配信する（Tailscale なら `tailscale serve --bg 8765`）。VRの中ではコントローラのトリガーで視点を切り替える。描き方は点のデータだけで、ブルームは付かない。
+
 チャンネルを分けるときは `?ch=名前`（操作画面、出力、APIで共通）。
 
 ## 開発

@@ -1,6 +1,6 @@
 import {
   ACESFilmicToneMapping, BoxGeometry, Color, DepthTexture, DirectionalLight, GridHelper, Group, HalfFloatType, HemisphereLight, Mesh, MeshBasicMaterial, PerspectiveCamera,
-  Scene, Vector2, WebGLRenderer, WebGLRenderTarget,
+  Scene, Vector2, Vector3, WebGLRenderer, WebGLRenderTarget,
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -10,7 +10,6 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { DEFAULTS, sanitize } from '../core/params';
 import { loadLocal, saveLocal } from '../core/persist';
 import { Store } from '../core/store';
-import { startLoop } from '../engine/loop';
 import { Simulation } from '../engine/simulation';
 import { connectSync } from '../sync/client';
 import { fastTooltips } from '../control/tooltip';
@@ -211,11 +210,14 @@ const applyWorkLight = () => {
 };
 
 const camera = new PerspectiveCamera(50, 1, 0.05, 2000);
+// VRでは頭の位置がこの台の上で動く。普段は原点のままで何もしない
+const player = new Group();
+player.add(camera);
 // カメラから見て少し上・左から当てる（真正面からだと面の向きの差が出ない）
 headlight.position.set(-0.3, 0.5, 1);
 headlight.target.position.set(0, 0, 0);
 camera.add(headlight, headlight.target);
-scene.add(hemi, camera);
+scene.add(hemi, player);
 applyWorkLight();
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -278,6 +280,7 @@ function placeCamera() {
     controls.target.set(0, 0, -d / 2);
   }
   controls.update();
+  if (renderer.xr.isPresenting) standAtView();
 }
 placeCamera();
 
@@ -461,8 +464,13 @@ if (stats) {
 }
 
 let hazeTime = 0;
-startLoop(dt => {
+let last = performance.now();
+// VR中は、ヘッドセットの描画の間隔で回る（requestAnimationFrame は止まる）
+renderer.setAnimationLoop(now => {
+  const dt = Math.min(0.1, (now - last) / 1000);
+  last = now;
   const t0 = performance.now();
+  const xr = renderer.xr.isPresenting;
   if (dt > 0) fps += (1 / dt - fps) * 0.05;
   for (const f of feeds.values()) {
     f.sim.update(dt);
@@ -481,11 +489,12 @@ startLoop(dt => {
   }
   // ローリングシャッター。露光時間とスローは全チャンネル共通なので、どのチャンネルで計っても同じ
   const f0 = feedOrder[0], s0 = f0?.store.get();
-  rig.roll = vs.rolling && s0 ? vs.readout / 1000 * s0.timeScale / f0.sim.exposureTime() : 0;
+  rig.roll = vs.rolling && s0 && !xr ? vs.readout / 1000 * s0.timeScale / f0.sim.exposureTime() : 0;
   beams.haze.uRoll.value.set(rig.roll, s0?.exposureShape === 'exp' ? 1 : 0);
   renderer.getDrawingBufferSize(beams.haze.uRes.value);
-  surfaces.updateFacing(camera.position);
-  const video = vs.render === 'video';
+  surfaces.updateFacing(camera.getWorldPosition(eyePos));
+  // クッキーの描き方は画面ごとに前のコマを重ねる作りで、左右の目でずれるので、VRでは点のデータで描く
+  const video = vs.render === 'video' && !xr;
   beams.group.visible = !video;
   volume.enabled = video;
   if (video) {
@@ -503,10 +512,65 @@ startLoop(dt => {
   // 流れの速さを変えても形が飛ばないよう、時間を積み上げる
   hazeTime += dt * vs.flow;
   beams.haze.uTime.value = hazeTime;
-  controls.update();
-  composer.render();
+  if (xr) {
+    // ブルームなどの後処理は左右2枚の描画に使えないので、そのまま描く
+    renderer.render(scene, camera);
+  } else {
+    controls.update();
+    composer.render();
+  }
   cpu += (performance.now() - t0 - cpu) * 0.05;
 });
+
+// --- VR ---
+// ヘッドセットの床の高さが会場の床に合うように、選んでいる視点の位置に立つ。顔はステージの方へ向ける
+const eyePos = new Vector3();
+function standAtView() {
+  const p = camera.position.clone(), t = controls.target.clone();
+  // 普段の視点の高さは目の高さ（床から1.6m）なので、足もとに直す
+  player.position.set(p.x, p.y - 1.6, p.z);
+  player.rotation.set(0, Math.atan2(-(t.x - p.x), -(t.z - p.z)), 0);
+  camera.position.set(0, 1.6, 0);
+  camera.rotation.set(0, 0, 0);
+}
+renderer.xr.enabled = true;
+renderer.xr.setReferenceSpaceType('local-floor');
+// コントローラのトリガーで、次の視点へ移る
+for (const i of [0, 1]) {
+  renderer.xr.getController(i).addEventListener('select', () => {
+    const k = VIEWS.findIndex(v => v.id === vs.view);
+    vs.view = VIEWS[(k + 1) % VIEWS.length].id;
+    saveLocal(RIG_KEY, vs);
+    placeCamera();
+  });
+}
+const xrButton = document.getElementById('xr-enter') as HTMLButtonElement;
+let xrSession: XRSession | null = null;
+xrButton.addEventListener('click', async () => {
+  if (xrSession) { await xrSession.end(); return; }
+  try {
+    const session = await navigator.xr!.requestSession('immersive-vr', { optionalFeatures: ['local-floor'] });
+    xrSession = session;
+    // 視点の位置を先に計算してから立たせる（OrbitControls は VR 中は止める）
+    placeCamera();
+    await renderer.xr.setSession(session);
+    standAtView();
+    xrButton.textContent = 'VRを終える';
+    session.addEventListener('end', () => {
+      xrSession = null;
+      xrButton.textContent = 'VRで見る';
+      player.position.set(0, 0, 0);
+      player.rotation.set(0, 0, 0);
+      placeCamera();
+      resize();
+    });
+  } catch (e) {
+    xrButton.textContent = 'VRに入れませんでした';
+    console.warn(e);
+  }
+});
+// VRの機器がつながっていて、https で開いているときだけボタンを出す
+navigator.xr?.isSessionSupported('immersive-vr').then(ok => { xrButton.hidden = !ok; }).catch(() => {});
 
 
 

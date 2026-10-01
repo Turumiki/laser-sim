@@ -19,6 +19,9 @@
   .tip[hidden] { display: none; }
   #rig-toggle { position: absolute; top: 8px; right: 8px; height: 26px; padding: 0 12px; color: #c8c8c8; background: rgba(35, 35, 35, .92);
     border: 1px solid #121212; border-radius: 2px; font: inherit; }
+  #xr-enter { position: absolute; top: 8px; right: 72px; height: 26px; padding: 0 12px; color: #c8c8c8; background: rgba(35, 35, 35, .92);
+    border: 1px solid #121212; border-radius: 2px; font: inherit; }
+  #xr-enter[hidden] { display: none; }
   @media (max-width: 600px) { #rig { left: 8px; width: auto; } }
 
   /* 設定の枠（エディタのインスペクターと同じ作り） */
@@ -53,6 +56,7 @@
 </head>
 <body>
 <button id="rig-toggle"></button>
+<button id="xr-enter" hidden>VRで見る</button>
 <div id="rig"></div>
 <script type="module" src="/src/viewer/main.ts"></script>
 </body>
