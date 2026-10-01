@@ -18,7 +18,15 @@ export function buildInspector(root: HTMLElement, store: Store, channel: string)
     const { pattern, output, ...rest } = DEFAULTS;
     store.set(rest);
   });
-  root.append(el('div', { class: 'inspector-head' }, resetAll));
+  // 何を編集しているか（Premiereのエフェクトコントロールの見出しと同じ）。ふだんはこのチャンネル、ステップを選ぶとそのステップ
+  const target = el('span', { class: 'target' });
+  root.append(el('div', { class: 'inspector-head' }, target, el('span', { class: 'grow' }), resetAll));
+  const setTarget = (label: string | null) => {
+    target.textContent = label ?? `ch: ${channel}`;
+    target.classList.toggle('step', !!label);
+    target.title = label ? 'シーケンスのステップを編集中。絵柄やレーザー機の変更は、このステップに入る。ステップをもう一度クリックで外れる' : '';
+  };
+  setTarget(null);
 
   // このレーザー（チャンネル）の設定と、全チャンネル共通の設定を分けて見せる
   let lastShared: boolean | null = null;
@@ -57,6 +65,7 @@ export function buildInspector(root: HTMLElement, store: Store, channel: string)
   const refresh = () => { const s = store.get(); for (const u of updaters) u(s); };
   store.subscribe(refresh);
   refresh();
+  return { setTarget };
 }
 
 function presetRow(store: Store) {

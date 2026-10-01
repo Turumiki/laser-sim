@@ -34,7 +34,8 @@ const engine = new Engine(canvas, store);
 if (saved?.animT) engine.scanner.animT = saved.animT;
 
 let sync: SyncStatus = 'connecting';
-const sequence = buildSequence($('sequence'), store, msg => link.show(msg), () => link.time.serverNow());
+let inspector: ReturnType<typeof buildInspector> | null = null;
+const sequence = buildSequence($('sequence'), store, msg => link.show(msg), () => link.time.serverNow(), label => inspector?.setTarget(label));
 const link = connectSync(store, {
   channel,
   role: 'control',
@@ -44,7 +45,7 @@ const link = connectSync(store, {
 
 const recorder = new Recorder(canvas);
 buildToolbar($('toolbar'), store, recorder, channel);
-buildInspector($('inspector'), store, channel);
+inspector = buildInspector($('inspector'), store, channel);
 buildPatternGrid($('patterns'), store);
 buildTabs($('bottom'));
 fastTooltips();

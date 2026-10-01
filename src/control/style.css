@@ -178,6 +178,11 @@ button, input, select { font: inherit; color: inherit; }
 .row.changed > label { color: var(--text); }
 .inspector-head { display: flex; justify-content: flex-end; padding: 4px 8px; background: var(--bg1); border-bottom: 1px solid var(--line); }
 .inspector-head .tb { height: 20px; font-size: 11px; }
+.inspector-head { align-items: center; gap: 6px; }
+.inspector-head .grow { flex: 1; }
+.inspector-head .tb { flex: none; white-space: nowrap; }
+.inspector-head .target { font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.inspector-head .target.step { color: var(--text); padding: 1px 6px; border-left: 2px solid var(--accent, #4a8fe0); background: var(--bg2); }
 .presets { display: flex; gap: 4px; padding: 4px 8px 2px 14px; }
 .presets .tb { height: 18px; padding: 0 6px; font-size: 11px; }
 

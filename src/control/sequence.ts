@@ -1,7 +1,7 @@
 import { sanitize } from '../core/params';
 import { getPattern } from '../core/patterns';
 import { loadLocal, saveLocal } from '../core/persist';
-import { locate, showLength, stepFrom, type Show } from '../core/show';
+import { locate, showLength, STEP_KEYS, stepFrom, type Show } from '../core/show';
 import { BUILTIN_SHOWS } from '../core/shows';
 import type { Store } from '../core/store';
 import type { ShowInfo } from '../sync/client';
@@ -17,7 +17,8 @@ const fmt = (sec: number) => `${Math.floor(sec / 60)}:${(sec % 60).toFixed(1).pa
 
 // シーケンス（ショー）のタブ。
 // 1行目: 再生まわり / 2行目: 編集（カスタムのときだけ） / タイムライン: 拍数に比例した長さのブロック
-export function buildSequence(root: HTMLElement, store: Store, send: Send, serverNow: () => number) {
+// onEdit: 設定パネルで編集しているステップ（なければ null）
+export function buildSequence(root: HTMLElement, store: Store, send: Send, serverNow: () => number, onEdit: (label: string | null) => void = () => {}) {
   let info: ShowInfo | null = null;
   let selected = loadLocal<string>(SEQ_KEY) ?? BUILTIN_SHOWS[0].id;
   let selStep = -1;
@@ -143,9 +144,12 @@ export function buildSequence(root: HTMLElement, store: Store, send: Send, serve
     const step = show?.steps[selStep];
     stepTools.hidden = !step;
     if (step) {
-      stepLabel.textContent = `ステップ ${selStep + 1}:`;
+      stepLabel.textContent = editable() ? `ステップ ${selStep + 1} を編集中:` : `ステップ ${selStep + 1}:`;
       beats.value = String(step.beats);
     }
+
+    const editing = editable() && step && !info?.state.playing;
+    onEdit(editing ? `ステップ ${selStep + 1}${step.values.pattern ? '：' + getPattern(step.values.pattern).name : ''}` : null);
 
     strip.replaceChildren();
     if (!show?.steps.length) {
@@ -168,10 +172,15 @@ export function buildSequence(root: HTMLElement, store: Store, send: Send, serve
         );
         b.style.width = `${Math.max(88, st.beats * 14)}px`;
         b.classList.toggle('sel', i === selStep);
-        // 止まっている間は、クリックでそのキューを出して確認できる
+        // 止まっている間は、クリックでそのキューを出す。カスタムなら、選んでいる間の設定の変更はそのステップに入る。
+        // もう一度クリックで選択を外す
         b.addEventListener('click', () => {
-          selStep = i;
-          if (!playing()) store.set(sanitize(st.values));
+          selStep = selStep === i ? -1 : i;
+          if (selStep >= 0 && !info?.state.playing) {
+            loading = true;
+            store.set(sanitize(st.values));
+            loading = false;
+          }
           render();
         });
         strip.append(b);
@@ -179,6 +188,25 @@ export function buildSequence(root: HTMLElement, store: Store, send: Send, serve
     }
     tick();
   }
+
+  // ステップを選んでいる間は、設定パネルやパターンでの変更をそのステップに書き込む。
+  // 自分の操作だけ（再生で切り替わった値や、他の画面からの同期は入れない）。送るのは少しまとめてから
+  const stepKeys = new Set<string>(STEP_KEYS as readonly string[]);
+  let pending = 0;
+  // ステップを呼び出しているところ（自分で書き戻さない）
+  let loading = false;
+  store.subscribe((changed, origin) => {
+    if (loading || origin !== 'local' || !editable() || selStep < 0 || info?.state.playing) return;
+    if (!Object.keys(changed).some(k => stepKeys.has(k))) return;
+    const at = selStep;
+    clearTimeout(pending);
+    pending = window.setTimeout(() => {
+      const show = current();
+      if (!show?.steps[at]) return;
+      const steps = show.steps.map((s, i) => (i === at ? stepFrom(store.get(), s.beats) : s));
+      saveCustom({ ...show, steps });
+    }, 300);
+  });
 
   // 再生中の位置（どのステップの何割まで来たか）を表示する
   function tick() {
