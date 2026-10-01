@@ -19,6 +19,7 @@ import { VolumePass, type VolumeProjector } from './volume';
 import { EYE_GAIN } from '../core/color';
 import { Beams, type Projector, type Rig, type Source } from './beams';
 import { ROOMS, setEdgeLevel, Surfaces, TARGETS, type TargetKind } from './surfaces';
+import { arenaLayout } from './venues';
 
 // レーザーが空間にどう出るかを3Dで見る（隠し機能）。設定は操作画面と同期する
 const params = new URLSearchParams(location.search);
@@ -68,6 +69,7 @@ const QUALITY: Record<Quality, { label: string; pixelRatio: () => number; sample
 
 // 複数台の並べ方。実際の現場でよくある置き方
 type Layout = 'parallel' | 'fan' | 'mirror';
+type Place = 'rig' | 'deck' | 'truss' | 'towers' | 'center';
 
 type View = 'audience' | 'foh' | 'side' | 'stage';
 const VIEWS: { id: View; label: string }[] = [
@@ -82,6 +84,15 @@ type RenderMode = 'vector' | 'video';
 const RENDER_MODES: { id: RenderMode; label: string }[] = [
   { id: 'vector', label: '点のデータから直接' },
   { id: 'video', label: 'クッキー（出力の映像）' },
+];
+
+// 設置場所（アリーナのとき）。現場でよく使う置き場所
+const PLACES: { id: Place; label: string }[] = [
+  { id: 'rig', label: '標準（床から5m）' },
+  { id: 'deck', label: 'ステージ前の床' },
+  { id: 'truss', label: 'ステージ上のトラス' },
+  { id: 'towers', label: '上手・下手のタワー' },
+  { id: 'center', label: 'センターステージ' },
 ];
 
 const LAYOUTS: { id: Layout; label: string }[] = [
@@ -129,6 +140,8 @@ interface ViewerSettings {
   count: number;
   spacing: number;
   layout: Layout;
+  // アリーナでのレーザーの設置場所
+  place: Place;
   view: View;
   render: RenderMode;
 }
@@ -136,7 +149,7 @@ const RIG_KEY = 'laser:viewer';
 // 初期値（チャンネルの割り当ては除く）
 const VIEWER_DEFAULTS: Omit<ViewerSettings, 'channels'> = {
   // スマホのGPUは非力なので、初めて開いたときは軽い画質にする
-  quality: matchMedia('(pointer: coarse)').matches ? 'low' : 'mid', haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, extinction: 0.3, flat: 0, work: 0.3, eye: false, rolling: false, readout: 16, target: 'wall', count: 1, spacing: 2, layout: 'parallel', view: 'audience', render: 'vector',
+  quality: matchMedia('(pointer: coarse)').matches ? 'low' : 'mid', haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, extinction: 0.3, flat: 0, work: 0.3, eye: false, rolling: false, readout: 16, target: 'wall', count: 1, spacing: 2, layout: 'parallel', place: 'rig', view: 'audience', render: 'vector',
 };
 const vs: ViewerSettings = {
   channels: [channel],
@@ -151,6 +164,7 @@ if (params.has('ch')) vs.channels = [channel];
   const q = (k: string) => params.get(k);
   if (TARGETS.some(t => t.id === q('target'))) vs.target = q('target') as TargetKind;
   if (LAYOUTS.some(l => l.id === q('layout'))) vs.layout = q('layout') as Layout;
+  if (PLACES.some(l => l.id === q('place'))) vs.place = q('place') as Place;
   if (VIEWS.some(v => v.id === q('view'))) vs.view = q('view') as View;
   if (RENDER_MODES.some(m => m.id === q('render'))) vs.render = q('render') as RenderMode;
   const num = (k: string, min: number, max: number) => {
@@ -182,19 +196,22 @@ const scene = new Scene();
 scene.background = new Color(0x030303);
 
 // 作業灯。本番中の会場は真っ暗だが、形が分からないと見づらいので、弱い明かりを足せるようにする。
-// 上からの明かりと、斜め前からの明かりで、床・壁・天井の明るさに差を付ける
-const hemi = new HemisphereLight(0xd8e0ec, 0x202020, 0);
-const sun = new DirectionalLight(0xffffff, 0);
-sun.position.set(0.4, 1, -0.6);
-scene.add(hemi, sun);
+// 全体を照らす柔らかい明かり（上は明るめ）と、カメラから照らす明かり（CADのビューアと同じ。どこから見ても面が黒く潰れない）
+const hemi = new HemisphereLight(0xd8e0ec, 0x5a5a5a, 0);
+const headlight = new DirectionalLight(0xffffff, 0);
 const applyWorkLight = () => {
-  hemi.intensity = vs.work * 0.9;
-  sun.intensity = vs.work * 0.7;
+  hemi.intensity = vs.work * 1.4;
+  headlight.intensity = vs.work * 1.6;
   setEdgeLevel(vs.work);
 };
-applyWorkLight();
 
 const camera = new PerspectiveCamera(50, 1, 0.05, 2000);
+// カメラから見て少し上・左から当てる（真正面からだと面の向きの差が出ない）
+headlight.position.set(-0.3, 0.5, 1);
+headlight.target.position.set(0, 0, 0);
+camera.add(headlight, headlight.target);
+scene.add(hemi, camera);
+applyWorkLight();
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 
@@ -233,8 +250,14 @@ function placeCamera() {
     camera.position.set(width * 0.12, eye, -d * 0.35);
     stage();
   } else if (vs.view === 'foh') {
-    // 客席の中央、奥行きの6割くらい。1mほどの台の上
-    camera.position.set(0, eye + 1, -d * 0.6);
+    if (vs.target === 'arena' && room) {
+      // アリーナではFOHの卓の後ろに立った目線
+      const L = arenaLayout(room, d);
+      camera.position.set(0, L.y0 + 0.6 + 1.6, L.fohZ - 0.5);
+    } else {
+      // 客席の中央、奥行きの6割くらい。1mほどの台の上
+      camera.position.set(0, eye + 1, -d * 0.6);
+    }
     stage();
   } else if (vs.view === 'side') {
     if (room) {
@@ -255,15 +278,43 @@ placeCamera();
 
 const beams = new Beams(rig, surfaces);
 let projectorList: Projector[] = [];
+const deg = (d: number) => d * Math.PI / 180;
+
+// アリーナでは、設置場所に合わせて高さと前後の位置を決める（座標はプロジェクターの標準位置が原点）
+function placeIn(list: Projector[]): Projector[] {
+  const room = ROOMS.arena;
+  if (vs.target !== 'arena' || !room || vs.place === 'rig') return list;
+  const L = arenaLayout(room, vs.distance);
+  return list.map((p, i) => {
+    const [x] = p.pos;
+    switch (vs.place) {
+      // ステージの前の縁に床置き（高さ30cmほどの台）。客席に当てないよう少し上に向ける
+      case 'deck': return { ...p, pos: [x, L.deck + 0.3, L.front + 0.5], pitch: deg(12) };
+      // 一番前の照明トラスに吊る。客席の上へ少し下向きに
+      case 'truss': return { ...p, pos: [x, L.trussY - 0.4, 2], pitch: deg(-8) };
+      // ステージの左右に立てたタワーに、半分ずつ縦に積む。少し内向きに振る
+      case 'towers': {
+        const left = i < Math.ceil(list.length / 2), k = left ? i : i - Math.ceil(list.length / 2);
+        const side = left ? -1 : 1;
+        return { ...p, pos: [side * (L.sw / 2 + 3), L.y0 + 6 + k * 0.9, 0], yaw: p.yaw - side * deg(10), pitch: deg(5) };
+      }
+      // 花道の先のセンターステージ
+      case 'center': return { ...p, pos: [x, L.hy + 0.3, -L.run - L.cs], pitch: deg(15) };
+    }
+    return p;
+  });
+}
+
 const placeProjectors = () => {
-  const list = layout(vs.count, vs.spacing, vs.layout);
+  const list = placeIn(layout(vs.count, vs.spacing, vs.layout));
   projectorList = list;
   beams.setProjectors(list);
   bodies.clear();
   for (const p of list) {
     const m = new Mesh(bodyGeo, bodyMat);
     m.position.set(p.pos[0], p.pos[1], p.pos[2]);
-    m.rotation.y = p.yaw;
+    // 左右に振ってから、上下に傾ける
+    m.rotation.set(p.pitch ?? 0, p.yaw, 0, 'YXZ');
     m.translateZ(0.26);
     bodies.add(m);
   }
@@ -455,7 +506,7 @@ function checkRow(key: 'eye' | 'rolling', label: string, title: string, then?: (
 
 function buildRigPanel() {
   const panel = document.getElementById('rig')!;
-  const rows: [Exclude<keyof ViewerSettings, 'target' | 'quality' | 'layout' | 'view' | 'channels' | 'render' | 'rolling' | 'eye'>, string, number, number, number][] = [
+  const rows: [Exclude<keyof ViewerSettings, 'target' | 'quality' | 'layout' | 'view' | 'channels' | 'render' | 'rolling' | 'eye' | 'place'>, string, number, number, number][] = [
     ['count', '台数', 1, 8, 1],
     ['spacing', '間隔', 0.5, 10, 0.5],
     ['haze', 'ヘイズ', 0.1, 5, 0.05],
@@ -518,6 +569,22 @@ function buildRigPanel() {
   layoutRow.append('並べ方', layoutSel);
   panel.append(layoutRow);
 
+  // 設置場所はアリーナのときだけ
+  if (vs.target === 'arena') {
+    const placeRow = document.createElement('label');
+    const placeSel = document.createElement('select');
+    for (const l of PLACES) placeSel.add(new Option(l.label, l.id));
+    placeSel.value = vs.place;
+    placeSel.addEventListener('change', () => {
+      vs.place = placeSel.value as Place;
+      placeProjectors();
+      saveLocal(RIG_KEY, vs);
+    });
+    placeRow.title = 'レーザーの置き場所。ステージ前の床・照明トラス・左右のタワー・センターステージ';
+    placeRow.append('設置場所', placeSel);
+    panel.append(placeRow);
+  }
+
   panel.append(assignBox);
   renderAssign();
   const targetRow = document.createElement('label');
@@ -532,9 +599,10 @@ function buildRigPanel() {
       vs.distance = room.depth;
     }
     placeWall();
+    placeProjectors();
     placeCamera();
     saveLocal(RIG_KEY, vs);
-    if (room) buildRigPanel();
+    buildRigPanel();
   });
   targetRow.append('投影先', select);
   panel.append(targetRow);

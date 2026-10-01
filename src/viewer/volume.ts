@@ -31,6 +31,14 @@ const COMMON = `
   uniform int uCount;
   uniform vec3 uPos[${MAX}];
   uniform vec2 uRot[${MAX}];
+  // 上下の傾き（cos, sin）
+  uniform vec2 uPitch[${MAX}];
+  // ワールドの向き → プロジェクターの向き（左右に振った分と、傾けた分を戻す）
+  vec3 toLocal(int j, vec3 v) {
+    vec2 cs = uRot[j], ps = uPitch[j];
+    float lx = v.x * cs.x - v.z * cs.y, lz = v.x * cs.y + v.z * cs.x;
+    return vec3(lx, v.y * ps.x + lz * ps.y, -v.y * ps.y + lz * ps.x);
+  }
   uniform float uHalfTan[${MAX}];
   uniform float uMirror[${MAX}];
   uniform int uCookieIndex[${MAX}];
@@ -54,10 +62,9 @@ const COMMON = `
   // 点 p がプロジェクター j のクッキーのどこに当たるか。範囲外なら false
   bool project(int j, vec3 p, out vec2 uv, out vec3 rel) {
     rel = p - uPos[j];
-    float lx = rel.x * uRot[j].x - rel.z * uRot[j].y;
-    float lz = rel.x * uRot[j].y + rel.z * uRot[j].x;
-    if (lz > -0.05) return false;
-    uv = vec2(lx, rel.y) / (-lz) / uHalfTan[j];
+    vec3 l = toLocal(j, rel);
+    if (l.z > -0.05) return false;
+    uv = l.xy / (-l.z) / uHalfTan[j];
     uv.x *= uMirror[j];
     return abs(uv.x) <= 1.0 && abs(uv.y) <= 1.0;
   }
@@ -105,6 +112,7 @@ export class VolumePass extends Pass {
       uCount: { value: 0 },
       uPos: { value: Array.from({ length: MAX }, () => new Vector3()) },
       uRot: { value: Array.from({ length: MAX }, () => new Vector2(1, 0)) },
+      uPitch: { value: Array.from({ length: MAX }, () => new Vector2(1, 0)) },
       uHalfTan: { value: new Array(MAX).fill(0.36) },
       uMirror: { value: new Array(MAX).fill(1) },
       uCookieIndex: { value: new Array(MAX).fill(0) },
@@ -148,10 +156,9 @@ export class VolumePass extends Pass {
           for (int j = 0; j < ${MAX}; j++) {
             if (j >= uCount) break;
             // 視線をプロジェクターの向きに直す。光の範囲（四角錐）に入って出るまでの区間を式で求め、その中だけを調べる
-            vec2 cs = uRot[j];
             vec3 a = uCam - uPos[j];
-            vec3 la = vec3(a.x * cs.x - a.z * cs.y, a.y, a.x * cs.y + a.z * cs.x);
-            vec3 lb = vec3(dir.x * cs.x - dir.z * cs.y, dir.y, dir.x * cs.y + dir.z * cs.x);
+            vec3 la = toLocal(j, a);
+            vec3 lb = toLocal(j, dir);
             float h = uHalfTan[j];
             float t0 = 0.0, t1 = tEnd;
             clipT(la.z, lb.z, t0, t1);
@@ -255,6 +262,7 @@ export class VolumePass extends Pass {
       if (k < 0 && cookies.length < COOKIES) k = cookies.push(p.cookie) - 1;
       u.uPos.value[i].set(p.pos[0], p.pos[1], p.pos[2]);
       u.uRot.value[i].set(Math.cos(p.yaw), Math.sin(p.yaw));
+      u.uPitch.value[i].set(Math.cos(p.pitch ?? 0), Math.sin(p.pitch ?? 0));
       u.uHalfTan.value[i] = p.halfTan;
       u.uMirror.value[i] = p.mirror ? -1 : 1;
       u.uCookieIndex.value[i] = Math.max(0, k);

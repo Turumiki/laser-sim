@@ -1,3 +1,4 @@
+import { arenaPolys, arenaTruss, hallPolys, type Material as VenueMaterial, type Poly } from './venues';
 import {
   BoxGeometry, BufferAttribute, BufferGeometry, CylinderGeometry, Group, LineBasicMaterial, LineSegments, Matrix4,
   Mesh, MeshLambertMaterial, PlaneGeometry, SphereGeometry, Vector3,
@@ -18,102 +19,48 @@ export const TARGETS: readonly { id: TargetKind; label: string }[] = [
 
 // 会場の大きさ（m）。実際の会場を参考にしたおおよその値
 // floor: プロジェクターの床からの高さ、depth: 選んだときの奥行き（壁までの距離）、
-// stage: プロジェクターより後ろ（ステージ側）の奥行き、stands: 客席の段（アリーナのスタンド）
+// stage: プロジェクターより後ろ（ステージ側）の奥行き。細かい形は venues.ts
 export interface Room {
   width: number;
   height: number;
   floor: number;
   depth: number;
   stage: number;
-  stands?: { inset: number; height: number };
 }
 export const ROOMS: Partial<Record<TargetKind, Room>> = {
   // 2000席くらいのホール。プロジェクターはステージの前の方
   hall: { width: 30, height: 16, floor: 3, depth: 45, stage: 12 },
-  // 大きめの屋内アリーナ。プロジェクターはトラス上。左右と奥にスタンド
-  arena: { width: 70, height: 30, floor: 5, depth: 110, stage: 18, stands: { inset: 12, height: 12 } },
+  // 1万〜1万5千人規模の屋内アリーナ（エンドステージ）。幅と高さはスタンドの外側まで
+  arena: { width: 100, height: 34, floor: 5, depth: 110, stage: 18 },
 };
 const DEFAULT_FLOOR = 2.2;
 // 面は作業灯（ビューアの明かり）で照らす。向きで明るさが変わるので、床・壁・天井の区別が付く
 const material = new MeshLambertMaterial({ color: 0x8c8c8c });
-const roomMaterial = new MeshLambertMaterial({ color: 0x8c8c8c });
-const standMaterial = new MeshLambertMaterial({ color: 0xa0a0a0 });
+const MATERIALS: Record<VenueMaterial, MeshLambertMaterial> = {
+  room: new MeshLambertMaterial({ color: 0x8c8c8c }),
+  stand: new MeshLambertMaterial({ color: 0xa0a0a0 }),
+  stage: new MeshLambertMaterial({ color: 0x7c7c7c }),
+  // スクリーンや機材は暗め（真っ黒だと形が見えないので少し明るく）
+  screen: new MeshLambertMaterial({ color: 0x4a4a4a }),
+  gear: new MeshLambertMaterial({ color: 0x5a5a5a }),
+};
 // 暗い会場でも形が分かるよう、面の縁に薄く線を引く（作業灯が明るいほど濃く）
 const edgeMaterial = new LineBasicMaterial({ color: 0x333333 });
 export function setEdgeLevel(k: number) {
   edgeMaterial.color.setScalar(0.2 + 0.25 * k);
 }
 
-// 長方形の面。点 = p + a*u + b*v（0≦a,b≦1、u と v は直交）
-interface Quad {
-  p: number[];
-  u: number[];
-  v: number[];
-  stand?: boolean;
-  // 当たり判定用に前もって計算しておく値（法線、n・p、|u|²、|v|²）
-  n?: number[];
-  np?: number;
-  uu?: number;
-  vv?: number;
-}
-
 const dot = (a: readonly number[], b: readonly number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-const cross = (a: number[], b: number[]) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const cross = (a: readonly number[], b: readonly number[]) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const sub = (a: readonly number[], b: readonly number[]) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 
-// 会場を長方形の組み合わせで作る。見た目と当たり判定に同じものを使う
-function roomQuads(r: Room, depth: number): Quad[] {
-  const y0 = -r.floor, y1 = r.height - r.floor, z0 = r.stage, z1 = -depth;
-  const xl = -r.width / 2, W = r.width, H = r.height, L = z1 - z0;
-  const q: Quad[] = [
-    { p: [xl, y1, z0], u: [W, 0, 0], v: [0, 0, L] },
-    { p: [xl, y0, z0], u: [W, 0, 0], v: [0, H, 0] },
-  ];
-  const s = r.stands;
-  if (!s) {
-    q.push(
-      { p: [xl, y0, z0], u: [W, 0, 0], v: [0, 0, L] },
-      { p: [xl, y0, z0], u: [0, 0, L], v: [0, H, 0] },
-      { p: [-xl, y0, z0], u: [0, 0, L], v: [0, H, 0] },
-      { p: [xl, y0, z1], u: [W, 0, 0], v: [0, H, 0] },
-    );
-    return q;
-  }
-  // スタンド付き：床は内側だけ。左右と奥に斜めの客席、その上に壁
-  const i = s.inset, sh = s.height, ys = y0 + sh;
-  q.push(
-    { p: [xl + i, y0, z0], u: [W - 2 * i, 0, 0], v: [0, 0, L + i] },
-    { p: [xl + i, y0, z0], u: [0, 0, L], v: [-i, sh, 0], stand: true },
-    { p: [-xl - i, y0, z0], u: [0, 0, L], v: [i, sh, 0], stand: true },
-    { p: [xl, y0, z1 + i], u: [W, 0, 0], v: [0, sh, -i], stand: true },
-    { p: [xl, ys, z0], u: [0, 0, L], v: [0, H - sh, 0] },
-    { p: [-xl, ys, z0], u: [0, 0, L], v: [0, H - sh, 0] },
-    { p: [xl, ys, z1], u: [W, 0, 0], v: [0, H - sh, 0] },
-  );
-  return q;
-}
+// 当たり判定用の三角形（Möller–Trumbore 法で解くための値を前もって持つ）
+interface Tri { a: number[]; e1: number[]; e2: number[] }
 
-// 表は会場の内側（inside の方）。外から見たときは裏になって描かれないので、中が見える
-function quadMesh(q: Quad, inside: readonly number[]) {
-  const { p, u, v } = q;
-  const c = (a: number, b: number) => [p[0] + u[0] * a + v[0] * b, p[1] + u[1] * a + v[1] * b, p[2] + u[2] * a + v[2] * b];
-  const mid = c(0.5, 0.5);
-  const inward = dot(cross(u, v), [inside[0] - mid[0], inside[1] - mid[1], inside[2] - mid[2]]) > 0;
-  const pts = (inward
-    ? [c(0, 0), c(1, 0), c(1, 1), c(0, 0), c(1, 1), c(0, 1)]
-    : [c(0, 0), c(1, 1), c(1, 0), c(0, 0), c(0, 1), c(1, 1)]).flat();
-  const geo = new BufferGeometry();
-  geo.setAttribute('position', new BufferAttribute(new Float32Array(pts), 3));
-  geo.computeVertexNormals();
-  const edges = new BufferGeometry();
-  edges.setAttribute('position', new BufferAttribute(new Float32Array(
-    [c(0, 0), c(1, 0), c(1, 0), c(1, 1), c(1, 1), c(0, 1), c(0, 1), c(0, 0)].flat()), 3));
-  const g = new Group();
-  const lines = new LineSegments(edges, edgeMaterial);
-  g.add(new Mesh(geo, q.stand ? standMaterial : roomMaterial), lines);
-  // 面が裏向きのときは縁の線も隠す（updateFacing で切り替える）
-  const n = cross(u, v);
-  if (!inward) for (let k = 0; k < 3; k++) n[k] = -n[k];
-  return { group: g, lines, n, mid };
+// 多角形を、表が toward を向く順に並べ直す
+function facingPts(p: Poly) {
+  const n = cross(sub(p.pts[1], p.pts[0]), sub(p.pts[2], p.pts[0]));
+  return dot(n, sub(p.toward, p.pts[0])) >= 0 ? p.pts : p.pts.slice().reverse();
 }
 
 // ビームが当たる物。プロジェクターは原点で -z 方向を向いている。
@@ -133,7 +80,7 @@ export class Surfaces {
   private kind: TargetKind = 'wall';
   private d = 8;
   private room: Room | null = null;
-  private quads: Quad[] = [];
+  private tris: Tri[] = [];
   // プロジェクターから床までの高さ
   floor = DEFAULT_FLOOR;
   // 物体の置き場所（壁の手前）と大きさ
@@ -157,23 +104,15 @@ export class Surfaces {
       if (o !== this.group && 'geometry' in o) (o as Mesh).geometry.dispose();
     });
     this.group.clear();
-    this.quads = [];
+    this.tris = [];
     this.facing = [];
     if (kind === 'none') return;
     if (this.room) {
-      this.quads = roomQuads(this.room, distance);
-      for (const q of this.quads) {
-        q.n = cross(q.u, q.v);
-        q.np = dot(q.n, q.p);
-        q.uu = dot(q.u, q.u);
-        q.vv = dot(q.v, q.v);
-      }
-      const r = this.room;
-      const inside = [0, r.height / 2 - r.floor, (r.stage - distance) / 2];
-      for (const q of this.quads) {
-        const m = quadMesh(q, inside);
-        this.group.add(m.group);
-        this.facing.push(m);
+      this.buildVenue(kind === 'arena' ? arenaPolys(this.room, distance) : hallPolys(this.room, distance));
+      if (kind === 'arena') {
+        const geo = new BufferGeometry();
+        geo.setAttribute('position', new BufferAttribute(new Float32Array(arenaTruss(this.room, distance)), 3));
+        this.group.add(new LineSegments(geo, edgeMaterial));
       }
       return;
     }
@@ -213,6 +152,34 @@ export class Surfaces {
     }
   }
 
+  // 会場の面を、材質ごとに1つのメッシュにまとめる。縁の線は面ごと（裏向きのとき隠すため）
+  private buildVenue(polys: Poly[]) {
+    const byMat = new Map<VenueMaterial, number[]>();
+    for (const p of polys) {
+      const pts = facingPts(p);
+      const list = byMat.get(p.mat) ?? [];
+      byMat.set(p.mat, list);
+      for (let i = 1; i < pts.length - 1; i++) {
+        list.push(...pts[0], ...pts[i], ...pts[i + 1]);
+        this.tris.push({ a: pts[0], e1: sub(pts[i], pts[0]), e2: sub(pts[i + 1], pts[0]) });
+      }
+      const edge: number[] = [];
+      for (let i = 0; i < pts.length; i++) edge.push(...pts[i], ...pts[(i + 1) % pts.length]);
+      const geo = new BufferGeometry();
+      geo.setAttribute('position', new BufferAttribute(new Float32Array(edge), 3));
+      const lines = new LineSegments(geo, edgeMaterial);
+      this.group.add(lines);
+      const mid = [0, 1, 2].map(k => pts.reduce((sum, q) => sum + q[k], 0) / pts.length);
+      this.facing.push({ lines, n: cross(sub(pts[1], pts[0]), sub(pts[2], pts[0])), mid });
+    }
+    for (const [mat, list] of byMat) {
+      const geo = new BufferGeometry();
+      geo.setAttribute('position', new BufferAttribute(new Float32Array(list), 3));
+      geo.computeVertexNormals();
+      this.group.add(new Mesh(geo, MATERIALS[mat]));
+    }
+  }
+
   private sideX() {
     return this.d * 0.6;
   }
@@ -220,7 +187,7 @@ export class Surfaces {
   // 点 o から方向 d へ飛ぶ光が最初に当たる所。o + d * t の t を返す（何にも当たらなければ Infinity）
   hit(o: readonly number[], d: readonly number[]): number {
     if (this.kind === 'none') return Infinity;
-    if (this.room) return this.hitQuads(o, d);
+    if (this.room) return this.hitTris(o, d);
     const [ox, oy, oz] = o, [dx, dy, dz] = d;
     const plane = (p: number, v: number, target: number) => {
       if (Math.abs(v) < 1e-9) return Infinity;
@@ -246,17 +213,25 @@ export class Surfaces {
     return t;
   }
 
-  private hitQuads(o: readonly number[], d: readonly number[]) {
+  private hitTris(o: readonly number[], d: readonly number[]) {
     let best = Infinity;
-    const w = this.w;
-    for (const q of this.quads) {
-      const n = q.n!, den = dot(n, d);
-      if (Math.abs(den) < 1e-12) continue;
-      const t = (q.np! - dot(n, o)) / den;
-      if (t <= 1e-6 || t >= best) continue;
-      for (let k = 0; k < 3; k++) w[k] = o[k] + d[k] * t - q.p[k];
-      const a = dot(w, q.u) / q.uu!, b = dot(w, q.v) / q.vv!;
-      if (a >= 0 && a <= 1 && b >= 0 && b <= 1) best = t;
+    const p = this.w;
+    for (const t of this.tris) {
+      const { a, e1, e2 } = t;
+      // p = d × e2
+      p[0] = d[1] * e2[2] - d[2] * e2[1]; p[1] = d[2] * e2[0] - d[0] * e2[2]; p[2] = d[0] * e2[1] - d[1] * e2[0];
+      const det = dot(e1, p);
+      if (Math.abs(det) < 1e-12) continue;
+      const inv = 1 / det;
+      const sx = o[0] - a[0], sy = o[1] - a[1], sz = o[2] - a[2];
+      const u = (sx * p[0] + sy * p[1] + sz * p[2]) * inv;
+      if (u < 0 || u > 1) continue;
+      // q = s × e1
+      const qx = sy * e1[2] - sz * e1[1], qy = sz * e1[0] - sx * e1[2], qz = sx * e1[1] - sy * e1[0];
+      const v = (d[0] * qx + d[1] * qy + d[2] * qz) * inv;
+      if (v < 0 || u + v > 1) continue;
+      const dist = (e2[0] * qx + e2[1] * qy + e2[2] * qz) * inv;
+      if (dist > 1e-6 && dist < best) best = dist;
     }
     return best;
   }

@@ -37,6 +37,8 @@ export interface Projector {
   pos: readonly [number, number, number];
   // 左右の向き（rad）。正で左を向く
   yaw: number;
+  // 上下の傾き（rad）。正で上を向く。省くと水平
+  pitch?: number;
   // 左右反転（左右対称に並べるときの右側）
   mirror: boolean;
 }
@@ -291,6 +293,8 @@ export class Beams {
   private proj: Projector = this.projectors[0];
   private cos = 1;
   private sin = 0;
+  private pcos = 1;
+  private psin = 0;
   private dir = [0, 0, 0];
   private rig: Rig;
   // 点の座標はサイズを掛ける前の値なので、ここで掛ける
@@ -322,11 +326,12 @@ export class Beams {
     const ax = clampMirror(x * a), ay = clampMirror(y * a);
     const warp = this.pincushion ? 1 / Math.cos(ay) : 1;
     const tx = Math.tan(ax) * warp * (this.proj.mirror ? -1 : 1), ty = Math.tan(ay);
-    // プロジェクターの向き（y軸まわりの回転）に合わせる。正面は -z
+    // プロジェクターの向きに合わせる。正面は -z。上下に傾けて（x軸まわり）から、左右に振る（y軸まわり）
     const d = this.dir, o = this.proj.pos;
-    d[0] = tx * this.cos - this.sin;
-    d[1] = ty;
-    d[2] = -tx * this.sin - this.cos;
+    const py = ty * this.pcos + this.psin, pz = ty * this.psin - this.pcos;
+    d[0] = tx * this.cos + pz * this.sin;
+    d[1] = py;
+    d[2] = -tx * this.sin + pz * this.cos;
     const t = this.surfaces.hit(o, d);
     // 当たらないビームは一定の長さで止め、先へ行くほど消えていく
     const reach = Number.isFinite(t) ? t : this.rig.distance * 1.2;
@@ -345,6 +350,8 @@ export class Beams {
     this.gain = this.rig.eye ? EYE_GAIN : [1, 1, 1];
     this.cos = Math.cos(p.yaw);
     this.sin = Math.sin(p.yaw);
+    this.pcos = Math.cos(p.pitch ?? 0);
+    this.psin = Math.sin(p.pitch ?? 0);
     this.sheets.origin = this.rays.origin = this.wall.origin = p.pos;
   }
 
