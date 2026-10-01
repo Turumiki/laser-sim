@@ -56,6 +56,10 @@ export class Frame {
 export interface Vec { x: number; y: number }
 
 // 消灯移動の前後に置く点数（30kppsで約100µs / 約270µs）
+// 曲線の長さを測るときの分割数と、1radの曲がりを長さに換算した値（点の詰め方）
+const CURVE_SAMPLES = 512;
+const TURN_COST = 0.03;
+
 const BLANK_BEFORE = 3;
 const BLANK_AFTER = 8;
 
@@ -162,22 +166,35 @@ export class FrameBuilder {
     }
   }
 
-  // u: 0..1 の曲線を点間隔が揃うように打つ
+  // u: 0..1 の曲線を、長さに沿って点間隔が揃うように打つ。
+  // 急に曲がる所は点を詰める（ミラーが曲がり切れずに丸まらないように。実機用のソフトも同じことをする）
+  private cu = new Float32Array(CURVE_SAMPLES + 1);
   curve(fn: (u: number, out: Vec) => void) {
-    const p = this.tmp;
+    const p = this.tmp, cost = this.cu;
     fn(0, p);
-    let px = p.x, py = p.y, len = 0;
-    for (let i = 1; i <= 256; i++) {
-      fn(i / 256, p);
-      len += Math.hypot(p.x - px, p.y - py);
+    let px = p.x, py = p.y, dx = 0, dy = 0;
+    cost[0] = 0;
+    for (let i = 1; i <= CURVE_SAMPLES; i++) {
+      fn(i / CURVE_SAMPLES, p);
+      const ex = p.x - px, ey = p.y - py, len = Math.hypot(ex, ey);
+      // 前の区間からの向きの変わり方（rad）
+      const turn = len > 1e-9 && (dx || dy) ? Math.abs(Math.atan2(dx * ey - dy * ex, dx * ex + dy * ey)) : 0;
+      cost[i] = cost[i - 1] + len + turn * TURN_COST;
+      if (len > 1e-9) { dx = ex; dy = ey; }
       px = p.x;
       py = p.y;
     }
-    const n = Math.max(8, Math.ceil(len / this.step));
+    const total = cost[CURVE_SAMPLES];
+    const n = Math.max(8, Math.ceil(total / this.step));
     fn(0, p);
     this.moveTo(p.x, p.y);
+    let j = 0;
     for (let i = 1; i <= n; i++) {
-      fn(i / n, p);
+      const target = total * i / n;
+      while (j < CURVE_SAMPLES - 1 && cost[j + 1] < target) j++;
+      const span = cost[j + 1] - cost[j];
+      const u = (j + (span > 0 ? (target - cost[j]) / span : 0)) / CURVE_SAMPLES;
+      fn(Math.min(u, 1), p);
       this.push(p.x, p.y, true);
     }
   }
