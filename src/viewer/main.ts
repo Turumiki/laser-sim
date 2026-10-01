@@ -443,7 +443,7 @@ buildRigPanel();
 fastTooltips();
 // 開発中だけ、ブラウザのコンソールから中身を見られるようにする
 preventDoubleTapZoom();
-if (import.meta.env.DEV) Object.assign(window, { laser3d: { renderer, feeds, beams } });
+if (import.meta.env.DEV) Object.assign(window, { laser3d: { renderer, feeds, beams, camera, controls } });
 
 // ?stats=1 で、fps と1フレームの処理時間（CPU側）を出す
 const stats = params.get('stats') === '1' ? document.body.appendChild(document.createElement('div')) : null;

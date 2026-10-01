@@ -20,6 +20,8 @@ interface HitGrid {
   boxes: Float32Array;
   // マスごとに、当たる可能性のある面（使うときに作る）
   cand: (number[] | undefined)[];
+  // 面ごとに、プロジェクターから表が見えるか（1: 見える）
+  faces: Uint8Array;
 }
 
 export interface Rig {
@@ -270,6 +272,16 @@ export class BeamGeometry {
     return out;
   }
 
+  // 面ごとに、プロジェクターがその面の表側にいるか。裏側の面には、縁をかすめたとき以外は当たらない
+  private facing(p: Projector) {
+    const n = this.hits.polyCount, out = new Uint8Array(n);
+    for (let id = 0; id < n; id++) {
+      const pl = this.hits.plane(id);
+      if (pl) out[id] = pl.n[0] * p.pos[0] + pl.n[1] * p.pos[1] + pl.n[2] * p.pos[2] - pl.np > 1e-6 ? 1 : 0;
+    }
+    return out;
+  }
+
   // 台ごとの格子。会場・置き場所・向き・振れる範囲が変わったら作り直す
   private grids: (HitGrid | undefined)[] = [];
   private grid: HitGrid | null = null;
@@ -294,7 +306,7 @@ export class BeamGeometry {
       const key = `${this.hits.version}|${p.pos.join(',')}|${p.yaw}|${p.pitch ?? 0}|${T.toFixed(5)}`;
       let g = this.grids[index];
       if (!g || g.key !== key) {
-        g = { key, T, N: GRID, ids: new Int32Array((GRID + 1) * (GRID + 1)).fill(-2), boxes: this.boxes(p), cand: [] };
+        g = { key, T, N: GRID, ids: new Int32Array((GRID + 1) * (GRID + 1)).fill(-2), boxes: this.boxes(p), cand: [], faces: this.facing(p) };
         this.grids[index] = g;
       }
       this.grid = g;
@@ -304,10 +316,13 @@ export class BeamGeometry {
   // 2本のビームが別々の面に当たっている（または奥行きが飛んでいる）か。
   // 別の面どうしを膜でそのままつなぐと、当たらないはずの所（箱の横の面など）を光が横切ってしまう。
   // ただし、へこんだ角でつながる面どうし（床と壁など）は、そのままつないでも物の中を通らないので分けない
-  private split(ta: number, ia: number, tb: number, ib: number) {
+  private split(ta: number, ia: number, tb: number, ib: number, strict = false) {
     if (!Number.isFinite(ta) || !Number.isFinite(tb)) return Number.isFinite(ta) !== Number.isFinite(tb);
     if (Math.abs(ta - tb) > 0.15 * Math.max(ta, tb)) return true;
-    return ia !== ib && !this.hits.concave(ia, ib);
+    if (ia === ib) return false;
+    // へこんだ角とみなすのは、プロジェクターから両方の面の表が見えるときだけ（縁をかすめて裏の面に当たったものは除く）
+    const f = this.grid?.faces;
+    return strict || !f || !f[ia] || !f[ib] || !this.hits.concave(ia, ib);
   }
   private lastId = -1;
   private ia = -1;
@@ -335,6 +350,7 @@ export class BeamGeometry {
     this.cached = next;
     this.p0[0] = x0; this.p0[1] = y0; this.p1[0] = x1; this.p1[1] = y1;
     this.edged = false;
+    this.cornered = false;
   }
 
   // 両端が別々の物に当たっているとき、境目の手前（ea）と向こう（eb）の当たる位置。
@@ -346,9 +362,12 @@ export class BeamGeometry {
   private tmp = [0, 0, 0];
   private edged = false;
   private edgeOk = false;
-  private edge() {
-    if (this.edged) return this.edgeOk;
+  // strict: へこんだ角も境目として扱う（角の点が出せなかったとき用）
+  private edgeStrict = false;
+  private edge(strict = false) {
+    if (this.edged && this.edgeStrict === strict) return this.edgeOk;
     this.edged = true;
+    this.edgeStrict = strict;
     let lo = 0, hi = 1, tLo = this.ta, tHi = this.tb, iLo = this.ia, iHi = this.ib;
     const ea = this.ea, eb = this.eb;
     ea[0] = this.a[0]; ea[1] = this.a[1]; ea[2] = this.a[2];
@@ -358,12 +377,51 @@ export class BeamGeometry {
       const m = (lo + hi) / 2, tmp = this.tmp;
       const t = this.hit(this.p0[0] + (this.p1[0] - this.p0[0]) * m, this.p0[1] + (this.p1[1] - this.p0[1]) * m, tmp);
       const id = this.lastId;
-      if (!this.split(tLo, iLo, t, id)) { lo = m; tLo = t; iLo = id; ea[0] = tmp[0]; ea[1] = tmp[1]; ea[2] = tmp[2]; }
+      if (!this.split(tLo, iLo, t, id, strict)) { lo = m; tLo = t; iLo = id; ea[0] = tmp[0]; ea[1] = tmp[1]; ea[2] = tmp[2]; }
       else { hi = m; tHi = t; iHi = id; eb[0] = tmp[0]; eb[1] = tmp[1]; eb[2] = tmp[2]; }
     }
     // 縁の両側がそれぞれつながっていれば、そこで分けて描ける
-    this.edgeOk = !this.split(tHi, iHi, this.tb, this.ib) || hi === 1;
+    this.edgeOk = !this.split(tHi, iHi, this.tb, this.ib, strict) || hi === 1;
     return this.edgeOk;
+  }
+
+  // へこんだ角をまたぐとき、膜の平面（光源・a・b を通る）と2つの面が交わる点 c（角の上の点）を出す。
+  // a → c → b と折り曲げれば、面の上を正しくたどる。出せなければ false
+  private c = [0, 0, 0];
+  private cornerOk = false;
+  private cornered = false;
+  private bend() {
+    if (this.cornered) return this.cornerOk;
+    this.cornered = true;
+    this.cornerOk = false;
+    const A = this.hits.plane(this.ia), B = this.hits.plane(this.ib);
+    if (!A || !B) return false;
+    const o = this.proj.pos, a = this.a, b = this.b;
+    const ua = [a[0] - o[0], a[1] - o[1], a[2] - o[2]], ub = [b[0] - o[0], b[1] - o[1], b[2] - o[2]];
+    // 膜の平面
+    const ns = [ua[1] * ub[2] - ua[2] * ub[1], ua[2] * ub[0] - ua[0] * ub[2], ua[0] * ub[1] - ua[1] * ub[0]];
+    const nps = ns[0] * o[0] + ns[1] * o[1] + ns[2] * o[2];
+    // 3枚の平面の交点（クラメルの公式）
+    const m = [A.n, B.n, ns], r = [A.np, B.np, nps];
+    const det3 = (c0: number[], c1: number[], c2: number[]) =>
+      c0[0] * (c1[1] * c2[2] - c1[2] * c2[1]) - c1[0] * (c0[1] * c2[2] - c0[2] * c2[1]) + c2[0] * (c0[1] * c1[2] - c0[2] * c1[1]);
+    // 行列の列ごとに見る（行 = 平面）
+    const col = (k: number) => [m[0][k], m[1][k], m[2][k]];
+    const D = det3(col(0), col(1), col(2));
+    if (Math.abs(D) < 1e-9) return false;
+    const c = this.c;
+    c[0] = det3(r, col(1), col(2)) / D;
+    c[1] = det3(col(0), r, col(2)) / D;
+    c[2] = det3(col(0), col(1), r) / D;
+    // 角の点が a と b の間（光源から見て2本のビームの間）にあるか
+    const uc = [c[0] - o[0], c[1] - o[1], c[2] - o[2]];
+    const cross = (p: number[], q: number[]) => [p[1] * q[2] - p[2] * q[1], p[2] * q[0] - p[0] * q[2], p[0] * q[1] - p[1] * q[0]];
+    const dotp = (p: number[], q: number[]) => p[0] * q[0] + p[1] * q[1] + p[2] * q[2];
+    if (dotp(cross(ua, uc), ns) < 0 || dotp(cross(uc, ub), ns) < 0) return false;
+    // 角の点が、2つの面が実際に接している所（両方の面の上）にあるか。外れていれば、間に別の物や隙間がある
+    if (!this.hits.contains(this.ia, c, 0.02) || !this.hits.contains(this.ib, c, 0.02)) return false;
+    this.cornerOk = true;
+    return true;
   }
 
   private tri(p: number[], q: number[], r: number, g: number, b: number) {
@@ -377,7 +435,20 @@ export class BeamGeometry {
 
   private sheet(r: number, g: number, b: number, k: number) {
     r *= k; g *= k; b *= k;
-    if (!this.split(this.ta, this.ia, this.tb, this.ib)) { this.tri(this.a, this.b, r, g, b); return; }
+    if (!this.split(this.ta, this.ia, this.tb, this.ib)) {
+      // へこんだ角をまたぐときは、角の点で折り曲げる
+      if (this.ia === this.ib) { this.tri(this.a, this.b, r, g, b); return; }
+      if (this.bend()) {
+        this.tri(this.a, this.c, r, g, b);
+        this.tri(this.c, this.b, r, g, b);
+        return;
+      }
+      // 角の点が出せなければ、境目を探して分ける
+      if (!this.edge(true)) return;
+      this.tri(this.a, this.ea, r, g, b);
+      this.tri(this.eb, this.b, r, g, b);
+      return;
+    }
     // 物の縁をまたぐ膜は、そのまま張ると手前の物を突き抜けるので、縁で2枚に分ける
     if (!this.edge()) return;
     this.tri(this.a, this.ea, r, g, b);
@@ -397,9 +468,22 @@ export class BeamGeometry {
     const ta = this.ta, tb = this.tb;
     if (!Number.isFinite(ta) && !Number.isFinite(tb)) return;
     k *= Math.exp(-this.ext * ((Number.isFinite(ta) ? ta : tb) + (Number.isFinite(tb) ? tb : ta)) / 2);
-    if (!this.split(ta, this.ia, tb, this.ib)) { this.line(this.a, this.b, r * k, g * k, b * k); return; }
-    // 縁をまたぐときは、縁の両側で別々に引く（何にも当たらない側は引かない）
-    if (!this.edge()) return;
+    if (!this.split(ta, this.ia, tb, this.ib)) {
+      // 面の上の光は、へこんだ角で必ず折り曲げる（まっすぐ引くと角を空中で横切る）
+      if (this.ia === this.ib) { this.line(this.a, this.b, r * k, g * k, b * k); return; }
+      if (this.bend()) {
+        this.line(this.a, this.c, r * k, g * k, b * k);
+        this.line(this.c, this.b, r * k, g * k, b * k);
+        return;
+      }
+      if (!this.edge(true)) return;
+      this.line(this.a, this.ea, r * k, g * k, b * k);
+      this.line(this.eb, this.b, r * k, g * k, b * k);
+      return;
+    }
+    // 縁をまたぐときは、縁の両側で別々に引く（何にも当たらない側は引かない）。
+    // 面の上の光は、へこんだ角も含めて必ず境目で分ける（まっすぐつなぐと空中を横切る）
+    if (!this.edge(true)) return;
     if (Number.isFinite(ta)) this.line(this.a, this.ea, r * k, g * k, b * k);
     if (Number.isFinite(tb)) this.line(this.eb, this.b, r * k, g * k, b * k);
   }

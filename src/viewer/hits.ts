@@ -77,6 +77,10 @@ export interface HitTarget {
   hit(o: readonly number[], d: readonly number[]): number;
   hitPlane(id: number, o: readonly number[], d: readonly number[]): number;
   concave(a: number, b: number): boolean;
+  // 面 id の平面（法線 n と n・p）。会場以外は null
+  plane(id: number): { n: number[]; np: number } | null;
+  // 点 p が面 id の上（縁から eps まで外側を含む）にあるか
+  contains(id: number, p: readonly number[], eps: number): boolean;
   // 会場の面の数と、面の頂点（表を内側に向けた順）
   readonly polyCount: number;
   polyPoints(id: number): readonly (readonly number[])[];
@@ -142,6 +146,26 @@ export class Hits implements HitTarget {
     // R = Rx·Ry。逆は転置
     const R = [cy, 0, sy, sx * sy, cx, -sx * cy, -cx * sy, sx, cx * cy];
     this.cubeRot = [R[0], R[3], R[6], R[1], R[4], R[7], R[2], R[5], R[8]];
+  }
+
+  plane(id: number) {
+    return this.planes[id] ?? null;
+  }
+
+  contains(id: number, p: readonly number[], eps: number) {
+    const pts = this.polyPts[id], pl = this.planes[id];
+    if (!pts || !pl) return false;
+    const len = Math.hypot(pl.n[0], pl.n[1], pl.n[2]);
+    // 平面から離れすぎていないか
+    if (Math.abs(dot(pl.n, p) - pl.np) / len > eps) return false;
+    // 凸多角形の、どの辺に対しても内側（表から見て左回り）
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i], b = pts[(i + 1) % pts.length];
+      const e = sub(b, a), w = sub(p, a);
+      const c = cross(e, w), el = Math.hypot(e[0], e[1], e[2]);
+      if (dot(c, pl.n) / (len * el) < -eps) return false;
+    }
+    return true;
   }
 
   get polyCount() {
