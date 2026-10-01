@@ -17,6 +17,9 @@ const RECORD: Record<number, number> = { 0: 8, 1: 6, 2: 3, 4: 10, 5: 8 };
 
 const pack = (r: number, g: number, b: number) => (r << 16) | (g << 8) | b;
 
+const isHeader = (v: DataView, o: number) =>
+  v.getUint8(o) === 0x49 && v.getUint8(o + 1) === 0x4c && v.getUint8(o + 2) === 0x44 && v.getUint8(o + 3) === 0x41;
+
 // .ild を読む。形式 0・1・4・5（点）と 2（パレット）に対応。コマの速さはファイルに無いので fps で決める
 export function parseIlda(buf: ArrayBuffer, fps = 30): AssetData {
   const v = new DataView(buf);
@@ -24,8 +27,13 @@ export function parseIlda(buf: ArrayBuffer, fps = 30): AssetData {
   let palette = DEFAULT_PALETTE.map(c => pack(c[0], c[1], c[2]));
   const frames: IldaFrame[] = [];
   while (o + 32 <= v.byteLength) {
-    if (String.fromCharCode(v.getUint8(o), v.getUint8(o + 1), v.getUint8(o + 2), v.getUint8(o + 3)) !== 'ILDA') {
-      throw new Error('ILDAファイルとして読めませんでした');
+    if (!isHeader(v, o)) {
+      if (o === 0) throw new Error('ILDAファイルとして読めませんでした');
+      // 途中に余計なバイトが挟まったファイルもあるので、次の見出しまで飛ばす。見つからなければ読めた所まで使う
+      let next = o + 1;
+      while (next + 32 <= v.byteLength && !isHeader(v, next)) next++;
+      if (next + 32 > v.byteLength) break;
+      o = next;
     }
     const format = v.getUint8(o + 7);
     const count = v.getUint16(o + 24);
