@@ -16,6 +16,9 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; }
+/* ドラッグ操作で文字が選択されないようにする（ツールのUIなので）。入力欄だけは選べる */
+body { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+input, textarea { user-select: text; -webkit-user-select: text; }
 button, input, select { font: inherit; color: inherit; }
 
 #app {
