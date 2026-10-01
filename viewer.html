@@ -11,29 +11,44 @@
   canvas { display: block; }
   body { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
   * { touch-action: manipulation; }
-  #rig { position: absolute; top: 40px; right: 8px; max-height: calc(100vh - 48px); overflow-y: auto; width: 240px; padding: 6px 8px; background: rgba(35, 35, 35, .92);
+  #rig { position: absolute; top: 40px; right: 8px; max-height: calc(100vh - 48px); overflow-y: auto; width: 268px; padding: 6px 8px; background: rgba(35, 35, 35, .92);
     border: 1px solid #121212; border-radius: 2px; }
   #rig.hidden { display: none; }
-  #rig label.with-button select { grid-column: 2 / 3; }
-  #rig label.wide select { grid-column: 2 / 4; }
-  #rig .assign { margin: 4px 0; padding: 4px 0; border-top: 1px solid #333; border-bottom: 1px solid #333; }
-  #rig .assign-head { font-size: 11px; color: #8b8b8b; margin-bottom: 2px; }
-  #rig label.wide input[type=text] { grid-column: 2 / 4; height: 20px; padding: 0 4px; color: #c8c8c8; background: #1b1b1b; border: 1px solid #121212; border-radius: 2px; font: inherit; }
-  #rig label.with-button button { height: 20px; padding: 0; color: #c8c8c8; background: #1b1b1b; border: 1px solid #121212; border-radius: 2px; font: inherit; font-size: 11px; }
   #stats { position: absolute; left: 8px; top: 8px; padding: 2px 6px; color: #8b8b8b; background: rgba(0, 0, 0, .6); font: 11px/1.4 monospace; }
   .tip { position: fixed; z-index: 10; max-width: 260px; padding: 4px 7px; border: 1px solid #383838; border-radius: 2px; background: #101010; color: #c8c8c8; font-size: 11px; line-height: 1.45; white-space: pre-line; pointer-events: none; }
   .tip[hidden] { display: none; }
   #rig-toggle { position: absolute; top: 8px; right: 8px; height: 26px; padding: 0 12px; color: #c8c8c8; background: rgba(35, 35, 35, .92);
     border: 1px solid #121212; border-radius: 2px; font: inherit; }
   @media (max-width: 600px) { #rig { left: 8px; width: auto; } }
-  #rig h3 { margin: 0 0 4px; font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: space-between; }
-  #rig h3 .reset { font: inherit; font-weight: 400; font-size: 11px; color: inherit; background: #2c2c2c; border: 1px solid #3a3a3a; border-radius: 2px; padding: 1px 8px; cursor: pointer; }
-  #rig h3 .reset:hover { border-color: #555; }
-  #rig label { display: grid; grid-template-columns: 80px 1fr 40px; align-items: center; gap: 6px; min-height: 22px; color: #8b8b8b; }
-  #rig input { width: 100%; accent-color: #4d8fd6; }
-  #rig select { grid-column: 2 / 4; height: 20px; color: #c8c8c8; background: #1b1b1b; border: 1px solid #121212; border-radius: 2px; font: inherit; }
-  #rig output { text-align: right; font-variant-numeric: tabular-nums; color: #c8c8c8; }
-  #rig p { margin: 6px 0 0; color: #6f6f6f; font-size: 11px; }
+
+  /* 設定の枠（エディタのインスペクターと同じ作り） */
+  #rig { padding: 0; }
+  #rig .head { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; border-bottom: 1px solid #121212; }
+  #rig .head .title { font-size: 11px; font-weight: 600; color: #c8c8c8; }
+  #rig button { height: 20px; padding: 0 8px; color: #c8c8c8; background: #2c2c2c; border: 1px solid #3a3a3a; border-radius: 2px; font: inherit; font-size: 11px; cursor: pointer; }
+  #rig button:hover { border-color: #555; }
+  #rig .grp h4 { margin: 0; padding: 4px 8px; font-size: 11px; font-weight: 600; color: #b8b8b8; background: #2a2a2a; border-bottom: 1px solid #1a1a1a; cursor: pointer; }
+  #rig .grp h4::before { content: '▾'; display: inline-block; width: 12px; color: #777; }
+  #rig .grp.closed h4::before { content: '▸'; }
+  #rig .grp.closed .rows { display: none; }
+  #rig .rows { padding: 4px 8px 6px; }
+  #rig .row { display: grid; grid-template-columns: 84px 1fr 52px; align-items: center; gap: 6px; min-height: 24px; color: #8b8b8b; }
+  #rig .row .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #rig .row select, #rig .row .seg { grid-column: 2 / 4; }
+  #rig .row.with-button select { grid-column: 2 / 3; }
+  #rig .row input[type=range] { width: 100%; accent-color: #4d8fd6; margin: 0; }
+  #rig .row input[type=checkbox] { justify-self: start; accent-color: #4d8fd6; margin: 0; }
+  #rig select { height: 20px; color: #c8c8c8; background: #1b1b1b; border: 1px solid #121212; border-radius: 2px; font: inherit; min-width: 0; }
+  #rig output { text-align: right; font-variant-numeric: tabular-nums; color: #c8c8c8; font-size: 11px; }
+  #rig .seg { display: flex; }
+  #rig .seg button { flex: 1; border-radius: 0; margin-left: -1px; background: #1b1b1b; border-color: #121212; padding: 0 4px; }
+  #rig .seg button:first-child { border-radius: 2px 0 0 2px; margin-left: 0; }
+  #rig .seg button:last-child { border-radius: 0 2px 2px 0; }
+  #rig .seg button.on { background: #4d8fd6; border-color: #4d8fd6; color: #fff; }
+  #rig .assign { margin: 4px 0 0; padding: 4px 0 0; border-top: 1px solid #333; }
+  #rig .assign-head { font-size: 11px; color: #8b8b8b; margin-bottom: 2px; }
+  #rig .assign label { display: grid; grid-template-columns: 84px 1fr; align-items: center; gap: 6px; min-height: 22px; color: #8b8b8b; }
+  #rig .note { margin: 0; padding: 6px 8px 8px; color: #6f6f6f; font-size: 11px; border-top: 1px solid #1a1a1a; }
 </style>
 </head>
 <body>

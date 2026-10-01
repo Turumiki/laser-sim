@@ -149,6 +149,8 @@ interface ViewerSettings {
   render: RenderMode;
 }
 const RIG_KEY = 'laser:viewer';
+// 設定の枠で閉じているまとまり
+const CLOSED_KEY = 'laser:viewer:closed';
 // 初期値（チャンネルの割り当ては除く）
 const VIEWER_DEFAULTS: Omit<ViewerSettings, 'channels'> = {
   // スマホのGPUは非力なので、初めて開いたときは軽い画質にする
@@ -507,164 +509,160 @@ startLoop(dt => {
 });
 
 
-function checkRow(key: 'eye' | 'rolling', label: string, title: string, then?: () => void) {
-  const row = document.createElement('label');
-  const box = Object.assign(document.createElement('input'), { type: 'checkbox', checked: vs[key] });
-  box.addEventListener('change', () => { vs[key] = box.checked; then?.(); saveLocal(RIG_KEY, vs); });
-  row.title = title;
-  row.append(label, box);
-  return row;
+
+// 設定の枠。エディタのインスペクターと同じく、役割ごとのまとまりに分けて開け閉めできるようにする
+type NumKey = 'count' | 'spacing' | 'haze' | 'distance' | 'bloom' | 'work' | 'smoke' | 'grain' | 'flow' | 'extinction' | 'flat' | 'readout';
+
+// 数値を変えたときに、作り直しが要るものだけ作り直す（毎回作ると重く、GPUのメモリも食う）
+function applyNumber(key: NumKey) {
+  if (key === 'distance') placeWall();
+  else if (key === 'count' || key === 'spacing') { placeProjectors(); useChannels(); renderAssign(); }
+  else if (key === 'bloom') applyBloom();
+  else if (key === 'work') applyWorkLight();
+  else applySmoke();
+  applyRig();
 }
 
 function buildRigPanel() {
   const panel = document.getElementById('rig')!;
-  const rows: [Exclude<keyof ViewerSettings, 'target' | 'quality' | 'layout' | 'view' | 'channels' | 'render' | 'rolling' | 'eye' | 'place'>, string, number, number, number][] = [
-    ['count', '台数', 1, 8, 1],
-    ['spacing', '間隔', 0.5, 10, 0.5],
-    ['haze', 'ヘイズ', 0.1, 5, 0.05],
-    ['distance', '壁までの距離', 2, 150, 0.5],
-    ['bloom', 'ブルーム', 0, 3, 0.05],
-    ['work', '作業灯', 0, 1, 0.05],
-    ['smoke', 'ヘイズのむら', 0, 1, 0.05],
-    ['grain', 'むらの細かさ', 0.2, 2, 0.05],
-    ['flow', 'ヘイズの流れ', 0, 3, 0.1],
-    ['extinction', 'ヘイズの減衰', 0, 1, 0.05],
-    ['flat', '距離減衰の補正（クッキー）', 0, 1, 0.05],
-    ['readout', '読み出し時間 ms', 1, 40, 1],
-  ];
-  panel.innerHTML = '<h3>3D</h3>';
-  // 設定を初期値に戻す。チャンネルの割り当てはそのまま。URLで指定した値も外して開き直す
-  const reset = document.createElement('button');
-  reset.className = 'reset';
-  reset.textContent = '初期値に戻す';
+  panel.replaceChildren();
+  const closed = new Set(loadLocal<string[]>(CLOSED_KEY) ?? []);
+  const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = '') => {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text) e.textContent = text;
+    return e;
+  };
+  const save = () => saveLocal(RIG_KEY, vs);
+
+  // 見出しと、初期値に戻すボタン。チャンネルの割り当てはそのまま。URLで指定した値も外して開き直す
+  const head = el('div', 'head');
+  const reset = el('button', 'reset', '初期値に戻す');
   reset.title = '3Dビューアの設定をすべて初期値に戻す（台ごとのチャンネルはそのまま）';
   reset.addEventListener('click', () => {
     saveLocal(RIG_KEY, { ...VIEWER_DEFAULTS, channels: vs.channels });
     const ch = params.get('ch');
     location.href = location.pathname + (ch ? `?ch=${encodeURIComponent(ch)}` : '');
   });
-  panel.querySelector('h3')!.append(reset);
-  const qualityRow = document.createElement('label');
-  const quality = document.createElement('select');
-  for (const [id, q] of Object.entries(QUALITY)) quality.add(new Option(q.label, id));
-  quality.value = vs.quality;
-  quality.addEventListener('change', () => {
-    vs.quality = quality.value as Quality;
-    buildComposer();
-    saveLocal(RIG_KEY, vs);
-  });
-  qualityRow.title = 'High: 高解像度・アンチエイリアス・細かいスモーク。Low: 解像度を下げ、ブルームなしで軽くする（スマホ向け）';
-  qualityRow.append('画質', quality);
-  panel.append(qualityRow);
+  head.append(el('span', 'title', '3Dビューア'), reset);
+  panel.append(head);
 
-  const modeRow = document.createElement('label');
-  const modeSel = document.createElement('select');
-  for (const m of RENDER_MODES) modeSel.add(new Option(m.label, m.id));
-  modeSel.value = vs.render;
-  modeSel.addEventListener('change', () => {
-    vs.render = modeSel.value as RenderMode;
-    saveLocal(RIG_KEY, vs);
-  });
-  modeRow.title = '点のデータから直接: ビームを点のデータから直接出す（実機に近い）。クッキー: 出力と同じ映像（クッキー用）を、スポットライトのクッキーとして投影する（Unityなどで起きることの再現）';
-  modeRow.append('描き方', modeSel);
-  panel.append(modeRow);
-
-  const layoutRow = document.createElement('label');
-  const layoutSel = document.createElement('select');
-  for (const l of LAYOUTS) layoutSel.add(new Option(l.label, l.id));
-  layoutSel.value = vs.layout;
-  layoutSel.addEventListener('change', () => {
-    vs.layout = layoutSel.value as Layout;
-    placeProjectors();
-    saveLocal(RIG_KEY, vs);
-  });
-  layoutRow.title = '複数台の並べ方。扇: 外側ほど外へ向ける / 左右対称: 右半分を左右反転';
-  layoutRow.append('並べ方', layoutSel);
-  panel.append(layoutRow);
-
-  // 設置場所はアリーナのときだけ
-  if (vs.target === 'arena') {
-    const placeRow = document.createElement('label');
-    const placeSel = document.createElement('select');
-    for (const l of PLACES) placeSel.add(new Option(l.label, l.id));
-    placeSel.value = vs.place;
-    placeSel.addEventListener('change', () => {
-      vs.place = placeSel.value as Place;
-      placeProjectors();
-      saveLocal(RIG_KEY, vs);
+  const section = (id: string, title: string) => {
+    const box = el('section', closed.has(id) ? 'grp closed' : 'grp');
+    const h = el('h4', '', title);
+    const rows = el('div', 'rows');
+    h.addEventListener('click', () => {
+      box.classList.toggle('closed');
+      if (box.classList.contains('closed')) closed.add(id); else closed.delete(id);
+      saveLocal(CLOSED_KEY, [...closed]);
     });
-    placeRow.title = 'レーザーの置き場所。ステージ前の床・照明トラス・左右のタワー・センターステージ';
-    placeRow.append('設置場所', placeSel);
-    panel.append(placeRow);
-  }
-
-  panel.append(assignBox);
-  renderAssign();
-  const targetRow = document.createElement('label');
-  const select = document.createElement('select');
-  for (const t of TARGETS) select.add(new Option(t.label, t.id));
-  select.value = vs.target;
-  select.addEventListener('change', () => {
-    vs.target = select.value as TargetKind;
-    const room = ROOMS[vs.target];
-    if (room) {
-      // 会場を選んだら、奥行きを合わせて客席からの視点にする
-      vs.distance = room.depth;
+    box.append(h, rows);
+    panel.append(box);
+    return rows;
+  };
+  const row = (parent: HTMLElement, label: string, title: string, ...controls: HTMLElement[]) => {
+    const r = el('div', 'row');
+    r.title = title;
+    r.append(el('span', 'name', label), ...controls);
+    parent.append(r);
+    return r;
+  };
+  const select = <T extends string>(parent: HTMLElement, label: string, title: string, options: readonly { id: T; label: string }[], value: T, set: (v: T) => void) => {
+    const sel = el('select');
+    for (const o of options) sel.add(new Option(o.label, o.id));
+    sel.value = value;
+    sel.addEventListener('change', () => { set(sel.value as T); save(); });
+    return row(parent, label, title, sel);
+  };
+  // 選択肢が少ないものは、並んだボタンで選ぶ
+  const seg = <T extends string>(parent: HTMLElement, label: string, title: string, options: readonly { id: T; label: string }[], value: T, set: (v: T) => void) => {
+    const box = el('div', 'seg');
+    for (const o of options) {
+      const b = el('button', o.id === value ? 'on' : '', o.label);
+      b.addEventListener('click', () => {
+        for (const x of box.children) x.classList.toggle('on', x === b);
+        set(o.id);
+        save();
+      });
+      box.append(b);
     }
+    return row(parent, label, title, box);
+  };
+  const range = (parent: HTMLElement, key: NumKey, label: string, title: string, min: number, max: number, step: number, unit = '') => {
+    const input = Object.assign(el('input'), { type: 'range', min, max, step, value: vs[key] });
+    const out = el('output');
+    const digits = step < 0.1 ? 2 : step < 1 ? 1 : 0;
+    const show = () => { out.textContent = vs[key].toFixed(digits) + unit; };
+    input.addEventListener('input', () => {
+      vs[key] = Number(input.value);
+      applyNumber(key);
+      save();
+      show();
+    });
+    show();
+    return row(parent, label, title, input, out);
+  };
+  const check = (parent: HTMLElement, key: 'eye' | 'rolling', label: string, title: string, then?: () => void) => {
+    const box = Object.assign(el('input'), { type: 'checkbox', checked: vs[key] });
+    box.addEventListener('change', () => { vs[key] = box.checked; then?.(); save(); });
+    return row(parent, label, title, box);
+  };
+
+  // --- 表示 ---
+  const view = section('view', '表示');
+  seg(view, '描き方', '点のデータ: ビームを点のデータから直接出す（実機に近い）。クッキー: 出力と同じ映像（クッキー用）を、スポットライトのクッキーとして投影する（Unityなどで起きることの再現）',
+    RENDER_MODES.map(m => ({ id: m.id, label: m.id === 'vector' ? '点データ' : 'クッキー' })), vs.render, v => { vs.render = v; buildRigPanel(); });
+  seg(view, '画質', 'High: 高解像度・アンチエイリアス・細かいスモーク。Low: 解像度を下げ、ブルームなしで軽くする（スマホ向け）',
+    (Object.keys(QUALITY) as Quality[]).map(id => ({ id, label: QUALITY[id].label })), vs.quality, v => { vs.quality = v; buildComposer(); });
+  const viewRow = select(view, '視点', '見る位置。ドラッグで動かしたあと「戻す」でこの位置に戻る', VIEWS, vs.view, v => { vs.view = v; placeCamera(); });
+  const back = el('button', 'small', '戻す');
+  back.addEventListener('click', () => placeCamera());
+  viewRow.append(back);
+  viewRow.classList.add('with-button');
+
+  // --- 会場 ---
+  const venue = section('venue', '会場');
+  select(venue, '投影先', 'ビームが当たる物。会場を選ぶと、奥行きも会場の大きさになる', TARGETS, vs.target, v => {
+    vs.target = v;
+    const room = ROOMS[v];
+    // 会場を選んだら、奥行きを合わせて客席からの視点にする
+    if (room) vs.distance = room.depth;
     placeWall();
     placeProjectors();
     placeCamera();
-    saveLocal(RIG_KEY, vs);
     buildRigPanel();
   });
-  targetRow.append('投影先', select);
-  panel.append(targetRow);
+  range(venue, 'distance', ROOMS[vs.target] ? '奥行き' : '壁までの距離', 'プロジェクターから奥の壁までの距離', 2, 150, 0.5, ' m');
+  range(venue, 'work', '作業灯', '会場の形を見るための明かり。0で本番のような真っ暗', 0, 1, 0.05);
 
-  const viewRow = document.createElement('label');
-  const viewSel = document.createElement('select');
-  for (const v of VIEWS) viewSel.add(new Option(v.label, v.id));
-  viewSel.value = vs.view;
-  viewSel.addEventListener('change', () => {
-    vs.view = viewSel.value as View;
-    placeCamera();
-    saveLocal(RIG_KEY, vs);
-  });
-  // ドラッグで動かしたあと、選んでいる視点の位置に戻す
-  const back = document.createElement('button');
-  back.textContent = '戻す';
-  back.addEventListener('click', e => { e.preventDefault(); placeCamera(); });
-  viewRow.classList.add('with-button');
-  viewRow.append('視点', viewSel, back);
-  panel.append(viewRow);
-  for (const [key, label, min, max, step] of rows) {
-    // 見る側（目・カメラ）の性質はオン/オフで、読み出し時間の手前に並べる
-    if (key === 'readout') {
-      panel.append(checkRow('eye', '目の感度', '人の目の色ごとの感度で見る。目は緑に敏感で、同じ出力でも赤や青は暗く見える（一般的なRGB機: 赤638nm・緑520nm・青450nm）', applyRig));
-      panel.append(checkRow('rolling', 'ローリング', 'スマホや一般的なビデオカメラで撮ったときの写り方。画面を上の行から順に時間をずらして撮るので、速く動くレーザーは曲がったり縞になったりして写る。スキャンのチャンネルを「点のデータから直接」で描いているときだけ効く'));
-    }
-    const row = document.createElement('label');
-    const input = Object.assign(document.createElement('input'), { type: 'range', min, max, step, value: vs[key] });
-    const out = document.createElement('output');
-    const show = () => { out.textContent = String(vs[key]); };
-    input.addEventListener('input', () => {
-      vs[key] = Number(input.value);
-      // 形を作り直すのは、形に関わる値が変わったときだけ（毎回作ると重く、GPUのメモリも食う）
-      if (key === 'distance') placeWall();
-      else if (key === 'count' || key === 'spacing') { placeProjectors(); useChannels(); renderAssign(); }
-      else if (key === 'bloom') applyBloom();
-      else if (key === 'work') applyWorkLight();
-      else applySmoke();
-      applyRig();
-      saveLocal(RIG_KEY, vs);
-      show();
-    });
-    row.append(label, input, out);
-    panel.append(row);
-    show();
+  // --- レーザー機 ---
+  const rigBox = section('rig', 'レーザー機');
+  range(rigBox, 'count', '台数', 'プロジェクターの台数', 1, 8, 1, ' 台');
+  range(rigBox, 'spacing', '間隔', '隣の台との間隔', 0.5, 10, 0.5, ' m');
+  select(rigBox, '並べ方', '複数台の並べ方。扇: 外側ほど外へ向ける / 左右対称: 右半分を左右反転', LAYOUTS, vs.layout, v => { vs.layout = v; placeProjectors(); });
+  if (vs.target === 'arena') {
+    select(rigBox, '設置場所', 'レーザーの置き場所。ステージ前の床・照明トラス・左右のタワー・センターステージ', PLACES, vs.place, v => { vs.place = v; placeProjectors(); });
   }
-  const note = document.createElement('p');
-  note.textContent = 'ドラッグで回転、右ドラッグ（2本指）で移動、ホイール（ピンチ）で拡大。H または右上のボタンでこの枠を隠す';
-  panel.append(note);
+  rigBox.append(assignBox);
+  renderAssign();
+
+  // --- ヘイズ ---
+  const haze = section('haze', 'ヘイズ');
+  range(haze, 'haze', '濃さ', 'ヘイズの濃さ（ビームの明るさ）', 0.1, 5, 0.05);
+  range(haze, 'smoke', 'むら', '濃さのむらの強さ。0で一様', 0, 1, 0.05);
+  range(haze, 'grain', 'むらの細かさ', 'むらの模様の細かさ', 0.2, 2, 0.05);
+  range(haze, 'flow', '流れ', '空調や送風で流れる速さ。0で止まる', 0, 3, 0.1);
+  range(haze, 'extinction', '減衰', '遠くへ行くほど光が弱まる度合い（ヘイズに吸われ、散らされる）', 0, 1, 0.05);
+
+  // --- 見え方（目・カメラ） ---
+  const look = section('look', '見え方');
+  range(look, 'bloom', 'ブルーム', '明るい所のにじみ（カメラやレンズでの光のあふれ）', 0, 3, 0.05);
+  check(look, 'eye', '目の感度', '人の目の色ごとの感度で見る。目は緑に敏感で、同じ出力でも赤や青は暗く見える（一般的なRGB機: 赤638nm・緑520nm・青450nm）', applyRig);
+  check(look, 'rolling', 'ローリング', 'スマホや一般的なビデオカメラで撮ったときの写り方。画面を上の行から順に時間をずらして撮るので、速く動くレーザーは曲がったり縞になったりして写る。スキャンのチャンネルを「点のデータ」で描いているときだけ効く', () => buildRigPanel());
+  if (vs.rolling) range(look, 'readout', '読み出し時間', '画面の上から下まで読み出すのにかかる時間。スマホでだいたい10〜30ms', 1, 40, 1, ' ms');
+  if (vs.render === 'video') range(look, 'flat', '距離減衰の補正', 'クッキーの描き方で、遠くの減衰を弱める（1で距離に反比例）。Unityのライトの減衰カーブを平らにしたときの見え方', 0, 1, 0.05);
+
+  panel.append(el('p', 'note', 'ドラッグで回転、右ドラッグ（2本指）で移動、ホイール（ピンチ）で拡大。H または右上のボタンでこの枠を隠す'));
 }
 
 // 設定の枠を隠す（キーボードのないスマホ用にボタンも置く）
