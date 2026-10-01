@@ -78,9 +78,18 @@ export class FrameBuilder {
   // これ以降に打つ点の明るさ（0〜1）
   level = 1;
 
-  reset(frame: Frame, step: number) {
+  // 消灯中の移動の刻み（1点あたり）と、着いてから点けるまで待つ点数の倍率。
+  // レーザー機の設定（サイズ・走査角・スキャナ性能・pps）から決める（実機用のソフトの自動調整と同じ）
+  private travelStep = 0.03;
+  private settleK = 1;
+  private after = BLANK_AFTER;
+
+  reset(frame: Frame, step: number, travelStep = 0.03, settleK = 1) {
     this.frame = frame;
     this.step = step;
+    this.travelStep = travelStep;
+    this.settleK = settleK;
+    this.after = Math.max(2, Math.round(BLANK_AFTER * settleK));
     this.started = false;
     this.paths = 0;
     this.level = 1;
@@ -99,20 +108,19 @@ export class FrameBuilder {
       this.started = true;
       this.fx = x;
       this.fy = y;
-      for (let i = 0; i < BLANK_AFTER; i++) this.push(x, y, false);
+      for (let i = 0; i < this.after; i++) this.push(x, y, false);
       return;
     }
     // 遠くへ飛ぶほどミラーが落ち着くのに時間がかかる
-    const settle = BLANK_AFTER + Math.round(Math.hypot(x - this.cx, y - this.cy) * 4);
+    const settle = this.after + Math.round(Math.hypot(x - this.cx, y - this.cy) * 4 * this.settleK);
     this.travel(x, y);
     for (let i = 0; i < settle; i++) this.push(x, y, false);
   }
 
   private travel(x: number, y: number) {
     const x0 = this.cx, y0 = this.cy;
-    // 消灯中の移動点。ミラーが付いて来られる速さで刻む（30Kのスキャナを最大走査角40°で使うとき、30kppsで1点あたり約0.03）。
-    // 速すぎると着く前に点灯して、ドットや線の始まりに尾が付く
-    const n = Math.max(1, Math.ceil(Math.hypot(x - x0, y - y0) / 0.035));
+    // 消灯中の移動点。ミラーが付いて来られる速さで刻む。速すぎると着く前に点灯して、ドットや線の始まりに尾が付く
+    const n = Math.max(1, Math.ceil(Math.hypot(x - x0, y - y0) / this.travelStep));
     for (let i = 0; i < BLANK_BEFORE; i++) this.push(x0, y0, false);
     for (let i = 1; i <= n; i++) this.push(x0 + (x - x0) * i / n, y0 + (y - y0) * i / n, false);
   }
@@ -123,10 +131,10 @@ export class FrameBuilder {
     // 一筆書きで始点に戻って終わる図形（円など）は、消灯せずにそのまま次の周へつなぐ。
     // 実機のソフトでも閉じた図形はこうする。消すと毎周その場所が欠ける
     if (this.paths === 1 && Math.hypot(this.fx - this.cx, this.fy - this.cy) < this.step * 0.5) {
-      this.frame.dropFront(BLANK_AFTER);
+      this.frame.dropFront(this.after);
       return;
     }
-    const extra = Math.round(Math.hypot(this.fx - this.cx, this.fy - this.cy) * 4);
+    const extra = Math.round(Math.hypot(this.fx - this.cx, this.fy - this.cy) * 4 * this.settleK);
     this.travel(this.fx, this.fy);
     for (let i = 0; i < extra; i++) this.push(this.fx, this.fy, false);
   }

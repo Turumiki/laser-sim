@@ -2,6 +2,7 @@ import { Frame, FrameBuilder } from './frame';
 import type { Settings } from './params';
 import { getPattern } from './patterns';
 import { hexToRgb, hsv } from './color';
+import { DEG_PER_SEC_PER_KPPS } from './scanner';
 
 const builder = new FrameBuilder();
 const rgb: [number, number, number] = [0, 0, 0];
@@ -9,7 +10,12 @@ const rgb: [number, number, number] = [0, 0, 0];
 // 設定と時刻から1フレーム分の点列を作る
 export function buildFrame(out: Frame, s: Readonly<Settings>, t: number) {
   out.clear();
-  builder.reset(out, s.density);
+  // 消灯中の移動は、ミラーが振れる速さの上限（1点あたり、点の座標で）の85%で刻む。
+  // ミラーが落ち着くまでの待ちは、30Kのスキャナを30kppsで使うときを基準に、遅いスキャナや高いppsほど長くする
+  const vmax = DEG_PER_SEC_PER_KPPS * s.scannerK / (s.scanAngle / 2 * s.size) / s.pps;
+  const travel = Math.min(0.2, Math.max(0.004, vmax * 0.85));
+  const settle = Math.min(6, Math.max(0.5, (30 / s.scannerK) * (s.pps / 30000)));
+  builder.reset(out, s.density, travel, settle);
   getPattern(s.pattern).draw(builder, t);
   builder.closeLoop();
   if (out.length === 0) out.push(0, 0, false);
