@@ -103,21 +103,31 @@ export const SMOKE_GLSL = `
   float fbm(vec3 p) {
     return 0.5 * noise(p) + 0.25 * noise(p * 2.03 + 1.7) + 0.125 * noise(p * 4.1 + 9.2);
   }
+  // ヘイズの濃さ（平均1）。ヘイズマシンの細かい粒が部屋に満ちているので、基本はほぼ一様。
+  // そこに 大きくゆるいむら（数m〜十数m）・流れに沿って伸びた筋・細かいざらつき を重ねる。
+  // 空調や送風で横に流され、熱で上の方に少し溜まる。uTime は流れの速さを掛けた時間
   float smoke1(vec3 w) {
-    // ヘイズは横に広がって層になりやすいので、縦方向を詰める
-    // 空調や送風で流される（横に速く、上下はゆっくり）。uTime は流れの速さを掛けた時間
-    vec3 p = w * uGrain * vec3(0.7, 1.8, 0.7) + vec3(uTime * 0.2, uTime * 0.03, -uTime * 0.12);
-    float d;
+    vec3 flow = vec3(uTime * 0.25, uTime * 0.02, -uTime * 0.15);
+    vec3 pl = (w + flow) * uGrain * 0.15;
+    // 筋は流れの向き（横）に長く、縦に詰める。形がゆっくり変わるよう、少しだけ歪ませる
+    vec3 pm = (w + flow * 1.6) * uGrain * vec3(0.35, 1.2, 0.35);
+    vec3 pf = (w + flow * 2.5) * uGrain * 1.6 + 11.0;
+    float large, mid, fine;
     if (uProcedural > 0.5) {
-      // 流れながら形も変わるよう、歪ませる量を時間で動かす
-      vec3 q = p * 0.5 + vec3(0.0, 0.0, uTime * 0.2);
-      p += 1.6 * (vec3(noise(q + 3.1), noise(q + 7.4), noise(q + 1.3)) - 0.5);
-      d = fbm(p) * 0.7 + (1.0 - abs(2.0 * noise(p * 2.3) - 1.0)) * 0.3;
+      pm += 0.6 * (noise(pm * 0.35 + vec3(0.0, 0.0, uTime * 0.12)) - 0.5);
+      large = fbm(pl);
+      mid = fbm(pm);
+      fine = noise(pf * 2.0);
     } else {
-      p += 1.6 * (tex(p * 0.5 + vec3(3.1, 7.4, uTime * 0.2)) - 0.5);
-      d = tex(p) * 0.7 + (1.0 - abs(2.0 * tex(p * 2.3 + 5.0) - 1.0)) * 0.3;
+      pm += 0.6 * (tex(pm * 0.35 + vec3(0.0, 0.0, uTime * 0.12)) - 0.5);
+      large = tex(pl);
+      mid = tex(pm);
+      fine = tex(pf);
     }
-    return smoothstep(0.38, 0.72, d);
+    // ノイズの値は0.5のまわりに集まるので、振れ幅を大きめに取る
+    float d = 1.0 + 1.6 * (large - 0.5) + 2.4 * (mid - 0.5) + 1.4 * (fine - 0.5);
+    // 上の方ほど少し濃い（10m上で1割ほど）
+    return max(0.0, d * (1.0 + 0.01 * w.y));
   }
   // 光の膜には厚みがある（遠いほどビームが広がって厚い）。視線に沿って厚みの中を数か所測って平均する
   // w: 空間での位置、r: 光源からの距離
@@ -126,7 +136,7 @@ export const SMOKE_GLSL = `
     float d = uThick > 0.5
       ? (smoke1(w - viewDir * thick) + smoke1(w) + smoke1(w + viewDir * thick)) / 3.0
       : smoke1(w);
-    return mix(1.0, d * 1.7, uSmoke);
+    return mix(1.0, d, uSmoke);
   }
 `;
 

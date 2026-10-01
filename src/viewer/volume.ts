@@ -176,7 +176,7 @@ export class VolumePass extends Pass {
               uv.x *= uMirror[j];
               vec3 rel = a + dir * t;
               vec3 p = uCam + dir * t;
-              float dens = mix(1.0, smoke1(p) * 1.7, uSmoke);
+              float dens = mix(1.0, smoke1(p), uSmoke);
               // スポットライトは距離の2乗で弱まる。細い線を取りこぼさないよう、少しぼかした段を読む。
               // uFlat を上げると遠くの減衰を弱める（1で距離に反比例。4mの所は変わらない）
               float r2 = max(dot(rel, rel), 0.25);
