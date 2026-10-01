@@ -1,5 +1,5 @@
 import {
-  BoxGeometry, BufferAttribute, BufferGeometry, CylinderGeometry, DoubleSide, Group, LineBasicMaterial, LineSegments, Matrix4,
+  BoxGeometry, BufferAttribute, BufferGeometry, CylinderGeometry, Group, LineBasicMaterial, LineSegments, Matrix4,
   Mesh, MeshLambertMaterial, PlaneGeometry, SphereGeometry, Vector3,
 } from 'three';
 
@@ -36,8 +36,8 @@ export const ROOMS: Partial<Record<TargetKind, Room>> = {
 const DEFAULT_FLOOR = 2.2;
 // 面は作業灯（ビューアの明かり）で照らす。向きで明るさが変わるので、床・壁・天井の区別が付く
 const material = new MeshLambertMaterial({ color: 0x8c8c8c });
-const roomMaterial = new MeshLambertMaterial({ color: 0x8c8c8c, side: DoubleSide });
-const standMaterial = new MeshLambertMaterial({ color: 0xa0a0a0, side: DoubleSide });
+const roomMaterial = new MeshLambertMaterial({ color: 0x8c8c8c });
+const standMaterial = new MeshLambertMaterial({ color: 0xa0a0a0 });
 // 暗い会場でも形が分かるよう、面の縁に薄く線を引く（作業灯が明るいほど濃く）
 const edgeMaterial = new LineBasicMaterial({ color: 0x333333 });
 export function setEdgeLevel(k: number) {
@@ -92,10 +92,15 @@ function roomQuads(r: Room, depth: number): Quad[] {
   return q;
 }
 
-function quadMesh(q: Quad) {
+// 表は会場の内側（inside の方）。外から見たときは裏になって描かれないので、中が見える
+function quadMesh(q: Quad, inside: readonly number[]) {
   const { p, u, v } = q;
   const c = (a: number, b: number) => [p[0] + u[0] * a + v[0] * b, p[1] + u[1] * a + v[1] * b, p[2] + u[2] * a + v[2] * b];
-  const pts = [c(0, 0), c(1, 0), c(1, 1), c(0, 0), c(1, 1), c(0, 1)].flat();
+  const mid = c(0.5, 0.5);
+  const inward = dot(cross(u, v), [inside[0] - mid[0], inside[1] - mid[1], inside[2] - mid[2]]) > 0;
+  const pts = (inward
+    ? [c(0, 0), c(1, 0), c(1, 1), c(0, 0), c(1, 1), c(0, 1)]
+    : [c(0, 0), c(1, 1), c(1, 0), c(0, 0), c(0, 1), c(1, 1)]).flat();
   const geo = new BufferGeometry();
   geo.setAttribute('position', new BufferAttribute(new Float32Array(pts), 3));
   geo.computeVertexNormals();
@@ -103,13 +108,27 @@ function quadMesh(q: Quad) {
   edges.setAttribute('position', new BufferAttribute(new Float32Array(
     [c(0, 0), c(1, 0), c(1, 0), c(1, 1), c(1, 1), c(0, 1), c(0, 1), c(0, 0)].flat()), 3));
   const g = new Group();
-  g.add(new Mesh(geo, q.stand ? standMaterial : roomMaterial), new LineSegments(edges, edgeMaterial));
-  return g;
+  const lines = new LineSegments(edges, edgeMaterial);
+  g.add(new Mesh(geo, q.stand ? standMaterial : roomMaterial), lines);
+  // 面が裏向きのときは縁の線も隠す（updateFacing で切り替える）
+  const n = cross(u, v);
+  if (!inward) for (let k = 0; k < 3; k++) n[k] = -n[k];
+  return { group: g, lines, n, mid };
 }
 
 // ビームが当たる物。プロジェクターは原点で -z 方向を向いている。
 // 毎フレーム数千本を調べるので、汎用の当たり判定ではなく形ごとに式で解く
 export class Surfaces {
+  // 会場の面ごとの、表の向きと縁の線
+  private facing: { lines: LineSegments; n: number[]; mid: number[] }[] = [];
+
+  // カメラから見て裏を向いている面の縁を隠す（面そのものは裏面を描かない設定で消える）
+  updateFacing(cam: { x: number; y: number; z: number }) {
+    for (const f of this.facing) {
+      f.lines.visible = f.n[0] * (cam.x - f.mid[0]) + f.n[1] * (cam.y - f.mid[1]) + f.n[2] * (cam.z - f.mid[2]) > 0;
+    }
+  }
+
   readonly group = new Group();
   private kind: TargetKind = 'wall';
   private d = 8;
@@ -139,6 +158,7 @@ export class Surfaces {
     });
     this.group.clear();
     this.quads = [];
+    this.facing = [];
     if (kind === 'none') return;
     if (this.room) {
       this.quads = roomQuads(this.room, distance);
@@ -148,7 +168,13 @@ export class Surfaces {
         q.uu = dot(q.u, q.u);
         q.vv = dot(q.v, q.v);
       }
-      for (const q of this.quads) this.group.add(quadMesh(q));
+      const r = this.room;
+      const inside = [0, r.height / 2 - r.floor, (r.stage - distance) / 2];
+      for (const q of this.quads) {
+        const m = quadMesh(q, inside);
+        this.group.add(m.group);
+        this.facing.push(m);
+      }
       return;
     }
 

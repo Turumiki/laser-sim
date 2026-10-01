@@ -417,6 +417,7 @@ startLoop(dt => {
   rig.roll = vs.rolling && s0 ? vs.readout / 1000 * s0.timeScale / f0.sim.exposureTime() : 0;
   beams.haze.uRoll.value.set(rig.roll, s0?.exposureShape === 'exp' ? 1 : 0);
   renderer.getDrawingBufferSize(beams.haze.uRes.value);
+  surfaces.updateFacing(camera.position);
   const video = vs.render === 'video';
   beams.group.visible = !video;
   volume.enabled = video;
