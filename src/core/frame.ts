@@ -106,7 +106,9 @@ export class FrameBuilder {
 
   private travel(x: number, y: number) {
     const x0 = this.cx, y0 = this.cy;
-    const n = Math.max(1, Math.ceil(Math.hypot(x - x0, y - y0) / 0.15));
+    // 消灯中の移動点。ミラーが付いて来られる速さで刻む（30Kのスキャナを最大走査角40°で使うとき、30kppsで1点あたり約0.03）。
+    // 速すぎると着く前に点灯して、ドットや線の始まりに尾が付く
+    const n = Math.max(1, Math.ceil(Math.hypot(x - x0, y - y0) / 0.035));
     for (let i = 0; i < BLANK_BEFORE; i++) this.push(x0, y0, false);
     for (let i = 1; i <= n; i++) this.push(x0 + (x - x0) * i / n, y0 + (y - y0) * i / n, false);
   }
