@@ -77,6 +77,11 @@ export interface HitTarget {
   hit(o: readonly number[], d: readonly number[]): number;
   hitPlane(id: number, o: readonly number[], d: readonly number[]): number;
   concave(a: number, b: number): boolean;
+  // 会場の面の数と、面の頂点（表を内側に向けた順）
+  readonly polyCount: number;
+  polyPoints(id: number): readonly (readonly number[])[];
+  // 決まった面の中だけで当たりを探す（候補を絞れているとき用。lastId は hit と同じ）
+  hitAmong(ids: readonly number[], o: readonly number[], d: readonly number[]): number;
 }
 
 export class Hits implements HitTarget {
@@ -93,6 +98,8 @@ export class Hits implements HitTarget {
   center = 6;
   size = 1.2;
   private tris: Tri[] = [];
+  // 面ごとの三角形
+  private trisOf: Tri[][] = [];
   private planes: { n: number[]; np: number }[] = [];
   private polyPts: number[][][] = [];
   private concaveMemo = new Map<number, boolean>();
@@ -113,6 +120,7 @@ export class Hits implements HitTarget {
     this.center = distance * 0.72;
     this.size = distance * 0.16;
     this.tris = [];
+    this.trisOf = [];
     this.planes = [];
     this.polyPts = [];
     this.concaveMemo.clear();
@@ -124,7 +132,9 @@ export class Hits implements HitTarget {
         const n = cross(sub(pts[1], pts[0]), sub(pts[2], pts[0]));
         this.planes[id] = { n, np: dot(n, pts[0]) };
         this.polyPts[id] = pts;
-        for (let i = 1; i < pts.length - 1; i++) this.tris.push({ a: pts[0], e1: sub(pts[i], pts[0]), e2: sub(pts[i + 1], pts[0]), id });
+        const list: Tri[] = this.trisOf[id] = [];
+        for (let i = 1; i < pts.length - 1; i++) list.push({ a: pts[0], e1: sub(pts[i], pts[0]), e2: sub(pts[i + 1], pts[0]), id });
+        this.tris.push(...list);
       });
     }
     // 立方体は x軸まわりに傾けてから y軸まわりに回した向き（three.js の rotation.set(x, y, 0) と同じ）。その逆回転
@@ -132,6 +142,26 @@ export class Hits implements HitTarget {
     // R = Rx·Ry。逆は転置
     const R = [cy, 0, sy, sx * sy, cx, -sx * cy, -cx * sy, sx, cx * cy];
     this.cubeRot = [R[0], R[3], R[6], R[1], R[4], R[7], R[2], R[5], R[8]];
+  }
+
+  get polyCount() {
+    return this.polyPts.length;
+  }
+
+  polyPoints(id: number) {
+    return this.polyPts[id];
+  }
+
+  hitAmong(ids: readonly number[], o: readonly number[], d: readonly number[]) {
+    let best = Infinity;
+    this.lastId = -1;
+    for (const id of ids) {
+      for (const t of this.trisOf[id]) {
+        const dist = rayTri(t, o, d, this.w);
+        if (dist > 0 && dist < best) { best = dist; this.lastId = id; }
+      }
+    }
+    return best;
   }
 
   sideX() {

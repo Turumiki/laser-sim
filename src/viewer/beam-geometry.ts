@@ -16,6 +16,10 @@ interface HitGrid {
   N: number;
   // 隅ごとに当たる面の番号（-2: まだ調べていない、-1: 何にも当たらない）
   ids: Int32Array;
+  // 面ごとの、プロジェクターから見た範囲（tan で [左, 下, 右, 上]。前に無い面は NaN）
+  boxes: Float32Array;
+  // マスごとに、当たる可能性のある面（使うときに作る）
+  cand: (number[] | undefined)[];
 }
 
 export interface Rig {
@@ -188,6 +192,11 @@ export class BeamGeometry {
         this.lastId = id;
         return id < 0 ? Infinity : this.hits.hitPlane(id, this.proj.pos, this.dir);
       }
+      // 面の境目のマスは、このマスに掛かっている面だけを調べる（範囲は広めに取っているので、全部調べたときと同じ結果）
+      this.aim(tx, ty);
+      const t = this.hits.hitAmong(this.candidates(g, i, j), this.proj.pos, this.dir);
+      this.lastId = Number.isFinite(t) ? this.hits.lastId : -1;
+      return t;
     }
     this.aim(tx, ty);
     const t = this.hits.hit(this.proj.pos, this.dir);
@@ -201,10 +210,64 @@ export class BeamGeometry {
     let id = g.ids[k];
     if (id === -2) {
       this.aim((i / g.N * 2 - 1) * g.T, (j / g.N * 2 - 1) * g.T);
-      id = Number.isFinite(this.hits.hit(this.proj.pos, this.dir)) ? this.hits.lastId : -1;
+      // 隅はマスの縁の上なので、隣のマスの候補にも入っている
+      const t = this.hits.hitAmong(this.candidates(g, Math.min(i, g.N - 1), Math.min(j, g.N - 1)), this.proj.pos, this.dir);
+      id = Number.isFinite(t) ? this.hits.lastId : -1;
       g.ids[k] = id;
     }
     return id;
+  }
+
+  // マス (i, j) に掛かっている面の番号
+  private candidates(g: HitGrid, i: number, j: number) {
+    const k = j * g.N + i;
+    let c = g.cand[k];
+    if (!c) {
+      c = [];
+      const x0 = (i / g.N * 2 - 1) * g.T, x1 = ((i + 1) / g.N * 2 - 1) * g.T;
+      const y0 = (j / g.N * 2 - 1) * g.T, y1 = ((j + 1) / g.N * 2 - 1) * g.T;
+      const b = g.boxes;
+      for (let id = 0; id < b.length / 4; id++) {
+        if (b[id * 4] <= x1 && b[id * 4 + 2] >= x0 && b[id * 4 + 1] <= y1 && b[id * 4 + 3] >= y0) c.push(id);
+      }
+      g.cand[k] = c;
+    }
+    return c;
+  }
+
+  // 面ごとに、プロジェクターから見た範囲を出す。面をプロジェクターの向きに直し、
+  // 前（-z）にある部分だけに切ってから、z = -1 の面に映した点の範囲を取る
+  private boxes(p: Projector) {
+    const n = this.hits.polyCount, out = new Float32Array(n * 4).fill(NaN);
+    const o = p.pos, NEAR = -1e-3;
+    for (let id = 0; id < n; id++) {
+      const local = this.hits.polyPoints(id).map(v => {
+        const wx = v[0] - o[0], wy = v[1] - o[1], wz = v[2] - o[2];
+        const lx = wx * this.cos - wz * this.sin, pz = wx * this.sin + wz * this.cos;
+        return [lx, wy * this.pcos + pz * this.psin, -wy * this.psin + pz * this.pcos];
+      });
+      // z <= NEAR の側だけ残す（多角形を平面で切る）
+      const kept: number[][] = [];
+      for (let k = 0; k < local.length; k++) {
+        const a = local[k], b = local[(k + 1) % local.length];
+        const ain = a[2] <= NEAR, bin = b[2] <= NEAR;
+        if (ain) kept.push(a);
+        if (ain !== bin) {
+          const t = (NEAR - a[2]) / (b[2] - a[2]);
+          kept.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, NEAR]);
+        }
+      }
+      if (!kept.length) continue;
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const v of kept) {
+        const x = v[0] / -v[2], y = v[1] / -v[2];
+        x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+      }
+      // 少し広げておく（丸め誤差で取りこぼさないように）
+      const m = 1e-4;
+      out.set([x0 - m, y0 - m, x1 + m, y1 + m], id * 4);
+    }
+    return out;
   }
 
   // 台ごとの格子。会場・置き場所・向き・振れる範囲が変わったら作り直す
@@ -231,7 +294,7 @@ export class BeamGeometry {
       const key = `${this.hits.version}|${p.pos.join(',')}|${p.yaw}|${p.pitch ?? 0}|${T.toFixed(5)}`;
       let g = this.grids[index];
       if (!g || g.key !== key) {
-        g = { key, T, N: GRID, ids: new Int32Array((GRID + 1) * (GRID + 1)).fill(-2) };
+        g = { key, T, N: GRID, ids: new Int32Array((GRID + 1) * (GRID + 1)).fill(-2), boxes: this.boxes(p), cand: [] };
         this.grids[index] = g;
       }
       this.grid = g;

@@ -443,14 +443,19 @@ buildRigPanel();
 fastTooltips();
 // 開発中だけ、ブラウザのコンソールから中身を見られるようにする
 preventDoubleTapZoom();
-if (import.meta.env.DEV) Object.assign(window, { laser3d: { renderer, feeds } });
+if (import.meta.env.DEV) Object.assign(window, { laser3d: { renderer, feeds, beams } });
 
 // ?stats=1 で、fps と1フレームの処理時間（CPU側）を出す
 const stats = params.get('stats') === '1' ? document.body.appendChild(document.createElement('div')) : null;
 let fps = 0, cpu = 0;
 if (stats) {
   stats.id = 'stats';
-  setInterval(() => { stats.textContent = `${fps.toFixed(0)} fps · CPU ${cpu.toFixed(2)} ms`; }, 250);
+  let lastUpdates = 0, rate = 0;
+  setInterval(() => {
+    rate = (beams.updates - lastUpdates) * 4;
+    lastUpdates = beams.updates;
+    stats.textContent = `${fps.toFixed(0)} fps · 画面 ${cpu.toFixed(2)} ms · ビーム ${beams.calcMs.toFixed(1)} ms（${beams.threaded ? '別スレッド' : '画面と同じ'}、${rate}回/秒）`;
+  }, 250);
 }
 
 let hazeTime = 0;

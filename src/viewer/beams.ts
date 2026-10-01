@@ -257,6 +257,9 @@ export class Beams {
   private recycle: ArrayBuffer[] = [];
   // Worker が使えないときは、同じ計算をここで行う
   private local: BeamGeometry | null = null;
+  // 計測用（?stats=1）: ビームの形を作るのにかかった時間と、1秒あたりの更新回数
+  calcMs = 0;
+  updates = 0;
 
   constructor(rig: Rig, surfaces: Surfaces) {
     this.rig = rig;
@@ -283,6 +286,11 @@ export class Beams {
     this.local ??= new BeamGeometry(this.surfaces.hits);
   }
 
+  // Worker で計算しているか（計測の表示用）
+  get threaded() {
+    return !!this.worker;
+  }
+
   setProjectors(list: readonly Projector[]) {
     this.projectors = list.length ? list : this.projectors;
   }
@@ -291,11 +299,14 @@ export class Beams {
     const rig = { ...this.rig }, ext = this.haze.uExt.value;
     if (!this.worker) {
       const g = this.local ?? (this.local = new BeamGeometry(this.surfaces.hits));
+      const t0 = performance.now();
       g.draw(this.projectors, sources.map(s => material(s, rig.roll)), rig, ext);
       const load = (buf: GpuBuffer, a: Arrays) => buf.load(a.count, [a.pos, a.col, a.org, a.age]);
       load(this.sheets, g.sheets);
       load(this.rays, g.rays);
       load(this.wall, g.wall);
+      this.calcMs += (performance.now() - t0 - this.calcMs) * 0.1;
+      this.updates++;
       return;
     }
     const h = this.surfaces.hits;
@@ -317,6 +328,8 @@ export class Beams {
 
   private receive(r: WorkerResult) {
     this.busy = false;
+    this.calcMs += (r.ms - this.calcMs) * 0.1;
+    this.updates++;
     const load = (buf: GpuBuffer, b: Built) => {
       const parts = [b.pos, b.col, b.org, b.age];
       buf.load(b.count, parts.map(p => new Float32Array(p.buf, 0, p.n)));

@@ -11,7 +11,8 @@ export type WorkerRequest =
 // 頂点の並び1つ（位置・色・光源の位置・光の古さ）。buf の先頭 n 個の float が中身
 export interface Part { buf: ArrayBuffer; n: number }
 export interface Built { count: number; pos: Part; col: Part; org: Part; age: Part }
-export interface WorkerResult { type: 'geometry'; sheets: Built; rays: Built; wall: Built }
+// ms: この計算にかかった時間
+export interface WorkerResult { type: 'geometry'; sheets: Built; rays: Built; wall: Built; ms: number }
 
 // Worker の中の self（型は画面側と分けずに、使う所だけ書く）
 const ctx = self as unknown as {
@@ -49,8 +50,9 @@ ctx.onmessage = e => {
     return;
   }
   pool.push(...m.recycle);
+  const t0 = performance.now();
   geo.draw(m.projectors, m.sources, m.rig, m.ext);
-  const out: WorkerResult = { type: 'geometry', sheets: pack(geo.sheets), rays: pack(geo.rays), wall: pack(geo.wall) };
+  const out: WorkerResult = { type: 'geometry', sheets: pack(geo.sheets), rays: pack(geo.rays), wall: pack(geo.wall), ms: performance.now() - t0 };
   const transfer = [out.sheets, out.rays, out.wall].flatMap(b => [b.pos.buf, b.col.buf, b.org.buf, b.age.buf]);
   ctx.postMessage(out, transfer);
 };
