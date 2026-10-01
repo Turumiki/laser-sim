@@ -84,18 +84,28 @@ export class Scanner {
 
     const f = this.frame;
     for (let k = 0; k < n; k++) {
-      if (this.fi >= f.length) {
+      if (this.fi >= f.length && this.bi >= this.bn) {
         this.source(f, this.animT);
         this.fi = 0;
+        this.bridge(f, p);
       }
-      const i = this.fi++;
       const c = this.ch;
-      this.cx[c] = f.x[i];
-      this.cy[c] = f.y[i];
-      this.cr[c] = f.r[i];
-      this.cg[c] = f.g[i];
-      this.cb[c] = f.b[i];
-      this.con[c] = f.on[i];
+      if (this.bi < this.bn) {
+        // コマのつなぎ目の、消灯したままの移動
+        const b = this.bi++;
+        this.cx[c] = this.bx[b];
+        this.cy[c] = this.by[b];
+        this.cr[c] = this.cg[c] = this.cb[c] = 0;
+        this.con[c] = 0;
+      } else {
+        const i = this.fi++;
+        this.cx[c] = f.x[i];
+        this.cy[c] = f.y[i];
+        this.cr[c] = f.r[i];
+        this.cg[c] = f.g[i];
+        this.cb[c] = f.b[i];
+        this.con[c] = f.on[i];
+      }
       this.ch = (c + 1) & (CMD - 1);
 
       const pi = (c - BASE_DELAY + CMD) & (CMD - 1);
@@ -122,6 +132,29 @@ export class Scanner {
       this.head = (o + 1) & (CAP - 1);
       if (this.count < CAP) this.count++;
     }
+  }
+
+  // 前のコマの終わりと次のコマの始まりが離れているとき（パターンが切り替わった、何も描かないコマの後など）、
+  // 消してから、ミラーが付いて来られる速さで移動し、落ち着くまで待つ点を挟む。挟まないと始まりの点に尾が付く
+  private bx = new Float32Array(600);
+  private by = new Float32Array(600);
+  private bn = 0;
+  private bi = 0;
+  private bridge(f: Frame, p: ScanParams) {
+    this.bn = this.bi = 0;
+    if (!f.length) return;
+    const last = (this.ch - 1 + CMD) & (CMD - 1);
+    const x0 = this.cx[last], y0 = this.cy[last], x1 = f.x[0], y1 = f.y[0];
+    const d = Math.hypot(x1 - x0, y1 - y0);
+    // 隣り合う点くらいの差（円などを続けて描くときのつなぎ目）はそのまま点けてつなぐ
+    if (d < 0.06) return;
+    const step = Math.max(1e-3, 0.85 * DEG_PER_SEC_PER_KPPS * p.scannerK / (p.scanAngle / 2 * p.size) / p.pps);
+    const n = Math.min(400, Math.ceil(d / step));
+    const settle = Math.min(150, Math.round(8 * (30 / p.scannerK) * (p.pps / 30000)));
+    const put = (x: number, y: number) => { this.bx[this.bn] = x; this.by[this.bn++] = y; };
+    for (let k = 0; k < 3; k++) put(x0, y0);
+    for (let k = 1; k <= n; k++) put(x0 + (x1 - x0) * k / n, y0 + (y1 - y0) * k / n);
+    for (let k = 0; k < settle; k++) put(x1, y1);
   }
 
   // シミュレーションせずに時間だけ進める（ベクター表示用）

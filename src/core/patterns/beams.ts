@@ -133,6 +133,72 @@ export const beams: Pattern[] = [
       }
     },
   },
+  {
+    // 並んだビームの奇数番と偶数番を、1拍ごとに交互に点ける
+    id: 'oddeven', name: 'オッドイーブン', category: 'beam',
+    hint: '並んだ8本のビームの奇数番と偶数番が、1拍ごとに交互に点く',
+    draw(f, _t, beat) {
+      const n = 8, odd = Math.floor(beat) % 2;
+      for (let i = odd; i < n; i += 2) {
+        f.moveTo((i / (n - 1) * 2 - 1) * 0.8, 0);
+        f.dwell(14);
+      }
+    },
+  },
+  {
+    // 扇のビームを8分音符の頭で短く光らせる（プラックやスネアに合わせる）
+    id: 'beamflash', name: 'ビームフラッシュ', category: 'beam',
+    hint: '7本の扇のビームが、8分音符の頭で短くパッと光る',
+    draw(f, _t, beat) {
+      if ((beat * 2) % 1 > 0.25) return;
+      const n = 7;
+      for (let i = 0; i < n; i++) {
+        f.moveTo((i / (n - 1) * 2 - 1) * 0.7, 0);
+        f.dwell(10);
+      }
+    },
+  },
+  {
+    // 円の上に並べたビームのうち3本だけを点け、8分音符ごとに1つずつ回す。ヘイズの中ではビームが円錐の上を回る
+    id: 'circlechase', name: 'サークルチェイス', category: 'beam',
+    hint: '円の上に並んだ12本のうち3本だけが点き、8分音符ごとに回っていく',
+    draw(f, _t, beat) {
+      const n = 12, step = Math.floor(beat * 2);
+      for (let k = 0; k < 3; k++) {
+        const a = ((step + k * 4) % n) / n * Math.PI * 2;
+        f.moveTo(0.45 * Math.cos(a), 0.45 * Math.sin(a));
+        f.dwell(12);
+      }
+    },
+  },
+  {
+    // 真ん中のビームから、1拍ごとに外側の左右1本ずつを足していく。広がるたびに色を変える（カラー: 素材の色のとき）
+    id: 'centerout', name: 'センターアウト', category: 'beam',
+    hint: '真ん中のビームから、1拍ごとに外側へ1本ずつ広がる。カラーを「素材の色」にすると、広がるたびに色が変わる',
+    draw(f, _t, beat) {
+      const half = 4, step = Math.floor(beat) % (half + 2);
+      for (let k = 0; k <= Math.min(step, half); k++) {
+        f.color(HUES[k % HUES.length]);
+        for (const side of k ? [-1, 1] : [1]) {
+          f.moveTo(side * k / half * 0.8, 0);
+          f.dwell(10);
+        }
+      }
+      f.color(null);
+    },
+  },
+  {
+    // 扇のビームが上から下へ2拍かけて降りてくる（下がっていくフレーズに合わせる）
+    id: 'downsweep', name: 'ダウンスイープ', category: 'beam',
+    hint: '7本の扇のビームが、2拍かけて上から下へ降りてくる',
+    draw(f, _t, beat) {
+      const y = 0.35 - 0.6 * ((beat / 2) % 1), n = 7;
+      for (let i = 0; i < n; i++) {
+        f.moveTo((i / (n - 1) * 2 - 1) * 0.6, y);
+        f.dwell(10);
+      }
+    },
+  },
 ];
 
 // 0〜1 の擬似乱数（同じ値からは同じ結果）
@@ -140,3 +206,8 @@ function rand(x: number) {
   const v = Math.sin(x * 12.9898 + 78.233) * 43758.5453;
   return v - Math.floor(v);
 }
+
+// センターアウトで広がるたびに使う色（赤・黄・緑・水色・青・紫）
+const HUES: readonly (readonly number[])[] = [
+  [255, 40, 40], [255, 220, 0], [0, 255, 64], [0, 229, 255], [40, 80, 255], [255, 32, 192],
+];
