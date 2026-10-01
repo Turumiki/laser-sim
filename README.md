@@ -31,6 +31,17 @@ Node.js 22.18 以上
 - インスペクター: 項目名を左右にドラッグで値が変わる（Shiftで細かく）
 - Space: 一時停止
 
+## 素材の読み込み
+
+パターンの「素材」から、PNG・JPG・SVG・ILDAファイル（.ild）を読み込める。読み込んだものはサーバーの `.assets/` に置かれ、全チャンネル・出力・3Dビューアから使える。
+
+- PNG・JPG: 色ごとの輪郭をなぞって線にする。背景（四隅の色か透明）はなぞらない。ロゴのようなはっきりした絵向け
+- SVG: 線と図形をそのまま読む。文字は読まないので、アウトライン化してから書き出す
+- ILDA: 形式 0・1・2・4・5。コマはファイルの順に 30fps で回す（アニメ速度で変わる）
+
+色は「カラー: 素材の色」で、画像やファイルの色のまま描く。黒い線は見えないので白にする。
+点が多いと1コマの間に描き切れず、一部ずつしか写らない。読み込んだときに点の数と1秒あたりの描き直しの回数が出る。
+
 ## API
 
 ```sh
@@ -50,6 +61,14 @@ curl -X POST http://localhost:8765/api/show -d '{"action":"stop"}'
 
 ```sh
 curl -X POST http://localhost:8765/api/show -d '{"action":"playAll","id":"custom","channels":["arena-l","arena-c","arena-r"]}'
+```
+
+素材の一覧・取得・削除（パターン名は `asset:<id>`）:
+
+```sh
+curl http://localhost:8765/api/assets
+curl -X POST http://localhost:8765/api/state -d '{"pattern":"asset:<id>","colorMode":"source"}'
+curl -X DELETE http://localhost:8765/api/assets/<id>
 ```
 
 3Dビューアは、URLで会場や台の並べ方を指定できる:

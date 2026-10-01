@@ -33,9 +33,19 @@ export function buildFrame(out: Frame, s: Readonly<Settings>, t: number) {
 
   if (s.colorMode === 'single') hexToRgb(s.color, rgb);
   else if (s.colorMode === 'cycle') hsv((t * 0.2) % 1, rgb);
+  const source = s.colorMode === 'source';
+  if (source) hexToRgb(s.color, rgb);
   for (let i = 0; i < n; i++) {
     if (!out.on[i]) {
       out.r[i] = out.g[i] = out.b[i] = 0;
+      continue;
+    }
+    // 素材の色。色を持たない点（素材以外のパターン）は単色の色で描く
+    if (source && out.own[i]) {
+      const l = out.l[i] / 255;
+      out.r[i] *= l;
+      out.g[i] *= l;
+      out.b[i] *= l;
       continue;
     }
     if (s.colorMode === 'rainbow') hsv((i / n + t * 0.1) % 1, rgb);

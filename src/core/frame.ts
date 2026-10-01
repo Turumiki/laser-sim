@@ -8,6 +8,8 @@ export class Frame {
   on: Uint8Array;
   // 点ごとの明るさ（0〜255）。色に掛ける
   l: Uint8Array;
+  // 1 なら、その点は自分の色（素材の色）を持っている
+  own: Uint8Array;
   length = 0;
 
   constructor(capacity = 4096) {
@@ -18,25 +20,28 @@ export class Frame {
     this.b = new Uint8Array(capacity);
     this.on = new Uint8Array(capacity);
     this.l = new Uint8Array(capacity);
+    this.own = new Uint8Array(capacity);
   }
 
   clear() {
     this.length = 0;
   }
 
-  push(x: number, y: number, on: boolean, level = 255) {
+  push(x: number, y: number, on: boolean, level = 255, rgb: readonly number[] | null = null) {
     if (this.length === this.x.length) this.grow();
     const i = this.length++;
     this.x[i] = x;
     this.y[i] = y;
     this.on[i] = on ? 1 : 0;
     this.l[i] = level;
+    this.own[i] = rgb ? 1 : 0;
+    if (rgb) { this.r[i] = rgb[0]; this.g[i] = rgb[1]; this.b[i] = rgb[2]; }
   }
 
   // 先頭の n 点を捨てて詰める
   dropFront(n: number) {
     n = Math.min(n, this.length);
-    for (const a of [this.x, this.y, this.r, this.g, this.b, this.on, this.l]) a.copyWithin(0, n, this.length);
+    for (const a of [this.x, this.y, this.r, this.g, this.b, this.on, this.l, this.own]) a.copyWithin(0, n, this.length);
     this.length -= n;
   }
 
@@ -50,6 +55,7 @@ export class Frame {
     this.b = copy(this.b, new Uint8Array(n));
     this.on = copy(this.on, new Uint8Array(n));
     this.l = copy(this.l, new Uint8Array(n));
+    this.own = copy(this.own, new Uint8Array(n));
   }
 }
 
@@ -77,6 +83,10 @@ export class FrameBuilder {
   private tmp: Vec = { x: 0, y: 0 };
   // これ以降に打つ点の明るさ（0〜1）
   level = 1;
+  // これ以降に打つ点の色（素材の色。null なら設定の色）
+  private rgb: readonly number[] | null = null;
+  // ILDAファイルの点をそのまま打っている（戻りの移動もデータに任せる）
+  private rawMode = false;
 
   // 消灯中の移動の刻み（1点あたり）と、着いてから点けるまで待つ点数の倍率。
   // レーザー機の設定（サイズ・走査角・スキャナ性能・pps）から決める（実機用のソフトの自動調整と同じ）
@@ -93,10 +103,12 @@ export class FrameBuilder {
     this.started = false;
     this.paths = 0;
     this.level = 1;
+    this.rgb = null;
+    this.rawMode = false;
   }
 
   private push(x: number, y: number, on: boolean) {
-    this.frame.push(x, y, on, Math.round(this.level * 255));
+    this.frame.push(x, y, on, Math.round(this.level * 255), on ? this.rgb : null);
     this.cx = x;
     this.cy = y;
   }
@@ -127,7 +139,7 @@ export class FrameBuilder {
 
   // フレームは繰り返し描かれるので、最後に最初の点まで消灯して戻っておく
   closeLoop() {
-    if (!this.started) return;
+    if (!this.started || this.rawMode) return;
     // 一筆書きで始点に戻って終わる図形（円など）は、消灯せずにそのまま次の周へつなぐ。
     // 実機のソフトでも閉じた図形はこうする。消すと毎周その場所が欠ける
     if (this.paths === 1 && Math.hypot(this.fx - this.cx, this.fy - this.cy) < this.step * 0.5) {
@@ -147,6 +159,37 @@ export class FrameBuilder {
 
   dwell(n: number) {
     for (let i = 0; i < n; i++) this.push(this.cx, this.cy, true);
+  }
+
+  color(rgb: readonly number[] | null) {
+    this.rgb = rgb;
+  }
+
+  // 読み込んだ線（素材）。点はそのまま通り、向きが大きく変わる所だけ少し溜める
+  path(pts: ArrayLike<number>, closed: boolean) {
+    const n = pts.length / 2;
+    if (n < 1) return;
+    this.moveTo(pts[0], pts[1]);
+    if (n === 1) { this.dwell(6); return; }
+    this.dwell(2);
+    const last = closed ? n : n - 1;
+    for (let k = 1; k <= last; k++) {
+      const i = k % n, h = k - 1, j = (k + 1) % n;
+      this.lineTo(pts[i * 2], pts[i * 2 + 1]);
+      if (k === last && !closed) { this.dwell(2); break; }
+      const ax = pts[i * 2] - pts[h * 2], ay = pts[i * 2 + 1] - pts[h * 2 + 1];
+      const bx = pts[j * 2] - pts[i * 2], by = pts[j * 2 + 1] - pts[i * 2 + 1];
+      const turn = Math.abs(Math.atan2(ax * by - ay * bx, ax * bx + ay * by));
+      if (turn > 0.7) this.dwell(turn > 1.6 ? 3 : 2);
+    }
+  }
+
+  // ILDAファイルの点。消灯や溜めはデータに入っているので、手を加えずに打つ
+  raw(x: number, y: number, on: boolean, rgb: readonly number[]) {
+    this.rawMode = true;
+    this.frame.push(x, y, on, 255, on ? rgb : null);
+    this.cx = x;
+    this.cy = y;
   }
 
   // pts: [x0, y0, x1, y1, ...]

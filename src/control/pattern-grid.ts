@@ -1,5 +1,6 @@
 import { listPatterns, type PatternCategory } from '../core/patterns';
 import type { Store } from '../core/store';
+import { buildAssetsPanel } from './assets-panel';
 import { el } from './dom';
 
 const CATEGORIES: { id: PatternCategory; label: string }[] = [
@@ -23,6 +24,8 @@ export function buildPatternGrid(root: HTMLElement, store: Store) {
     }
     root.append(el('h4', {}, c.label), clips);
   }
+
+  buildAssetsPanel(root, store);
 
   const refresh = () => {
     const cur = store.get().pattern;

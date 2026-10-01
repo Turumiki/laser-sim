@@ -1,6 +1,6 @@
 export type RenderMode = 'clean' | 'scan';
 export type ExposureShape = 'box' | 'exp';
-export type ColorMode = 'single' | 'rainbow' | 'cycle';
+export type ColorMode = 'single' | 'rainbow' | 'cycle' | 'source';
 export type Look = 'display' | 'source';
 
 export interface Settings {
@@ -95,10 +95,11 @@ export const OUTPUT_SIZES: Record<string, readonly [number, number]> = {
 };
 
 export const PARAMS: readonly ParamDef[] = [
-  { kind: 'enum', key: 'colorMode', label: 'カラー', hint: '点の色の付け方。レインボーは経路に沿って色相が変わる', group: 'content', options: [
+  { kind: 'enum', key: 'colorMode', label: 'カラー', hint: '点の色の付け方。レインボーは経路に沿って色相が変わる。素材の色は、読み込んだ画像やILDAファイルの色をそのまま使う（それ以外のパターンでは単色）', group: 'content', options: [
     { value: 'single', label: '単色' },
     { value: 'rainbow', label: 'レインボー' },
     { value: 'cycle', label: 'サイクル' },
+    { value: 'source', label: '素材の色' },
   ] },
   { kind: 'color', key: 'color', label: '色', hint: '単色のときのレーザーの色', group: 'content' },
   { kind: 'number', key: 'density', label: '点間隔', hint: '図形を点に分けるときの間隔。小さいほど点数が増え、フレームレート（pps ÷ 点数）が下がる', group: 'content', min: 0.004, max: 0.1, log: true, digits: 3 },

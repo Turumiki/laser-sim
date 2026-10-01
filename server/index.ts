@@ -4,6 +4,7 @@ import { networkInterfaces } from 'node:os';
 import path from 'node:path';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { isShared, sanitize } from '../src/core/params.ts';
+import { AssetStore, validateAsset } from './assets.ts';
 import { Clocks } from './clock.ts';
 import { ShowPlayer } from './show.ts';
 import { StateStore } from './state.ts';
@@ -45,6 +46,7 @@ function channelOf(url: URL) {
   const ch = url.searchParams.get('ch') || 'default';
   return /^[A-Za-z0-9_-]{1,40}$/.test(ch) && !RESERVED.has(ch) ? ch : 'default';
 }
+const assets = new AssetStore(path.join(ROOT, '.assets'));
 const channels = new Map<string, Set<WebSocket>>();
 const clocks = new Clocks();
 const shows = new ShowPlayer(path.join(ROOT, '.shows.json'), (ch, values) => applyPatch(ch, values, null), broadcastShow);
@@ -127,9 +129,15 @@ function json(res: ServerResponse, status: number, body: unknown) {
   res.end(JSON.stringify(body));
 }
 
-async function readBody(req: IncomingMessage) {
+// limit を超えたら途中で打ち切る（素材は大きいことがあるので、そこだけ上限を上げる）
+async function readBody(req: IncomingMessage, limit = 1 << 20) {
   const chunks: Buffer[] = [];
-  for await (const c of req) chunks.push(c as Buffer);
+  let size = 0;
+  for await (const c of req) {
+    size += (c as Buffer).length;
+    if (size > limit) throw new Error('too large');
+    chunks.push(c as Buffer);
+  }
   return Buffer.concat(chunks).toString('utf8');
 }
 
@@ -150,6 +158,25 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL) {
       try { showCommand(ch, JSON.parse(await readBody(req))); } catch { return json(res, 400, { error: 'JSONを送ってください' }); }
     }
     return json(res, 200, { state: shows.state(ch), custom: shows.customOf(ch) });
+  }
+  if (url.pathname === '/api/assets') {
+    if (req.method === 'POST') {
+      let body: { name?: unknown; data?: unknown };
+      try { body = JSON.parse(await readBody(req, 64 << 20)); } catch { return json(res, 400, { error: 'JSONを送ってください（64MBまで）' }); }
+      const data = validateAsset(body?.data);
+      if (!data) return json(res, 400, { error: '素材の形が正しくありません' });
+      return json(res, 200, assets.add(typeof body.name === 'string' ? body.name : '', data));
+    }
+    return json(res, 200, assets.list());
+  }
+  const assetMatch = /^\/api\/assets\/([A-Za-z0-9-]{1,40})$/.exec(url.pathname);
+  if (assetMatch) {
+    const id = assetMatch[1];
+    if (req.method === 'DELETE') return json(res, assets.remove(id) ? 200 : 404, { id });
+    const raw = assets.raw(id);
+    if (!raw) return json(res, 404, { error: 'not found' });
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    return res.end(raw);
   }
   if (url.pathname === '/api/info') return json(res, 200, { lan: lanUrls(), port: PORT });
   if (url.pathname === '/api/channels') return json(res, 200, channelList());

@@ -7,3 +7,4 @@ dist/
 .playwright-mcp/
 .shows.json
 .shows.json.tmp
+.assets/
