@@ -227,7 +227,10 @@ const spotMaterial = (uniforms: HazeUniforms) => new ShaderMaterial({
     void main() {
       vColor = color;
       vAge = aAge;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      // カメラへの視線に沿って、ほんの少しだけ手前に寄せる。画面上の位置は変わらず、面に埋もれない
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      mv.xyz *= 0.999;
+      gl_Position = projectionMatrix * mv;
     }`,
   fragmentShader: SHUTTER_GLSL + `
     varying vec3 vColor;

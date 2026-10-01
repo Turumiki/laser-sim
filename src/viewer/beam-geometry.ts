@@ -490,11 +490,10 @@ export class BeamGeometry {
 
   private line(p: number[], q: number[], r: number, g: number, b: number) {
     if (this.wall.full()) return;
-    // 面から少しだけ手前に出して、面と重ならないようにする
-    const s = this.wall, o = this.proj.pos, pull = 0.998;
-    const P = (v: number[], i: number) => o[i] + (v[i] - o[i]) * pull;
-    s.vert(0, P(p, 0), P(p, 1), P(p, 2), r, g, b);
-    s.vert(1, P(q, 0), P(q, 1), P(q, 2), r, g, b);
+    // 面の上にそのまま置く（面と重ならないようにするのは、描くときにカメラ側へずらして行う）
+    const s = this.wall;
+    s.vert(0, p[0], p[1], p[2], r, g, b);
+    s.vert(1, q[0], q[1], q[2], r, g, b);
     s.count++;
   }
 
