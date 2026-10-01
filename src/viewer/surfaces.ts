@@ -55,7 +55,7 @@ const cross = (a: readonly number[], b: readonly number[]) => [a[1] * b[2] - a[2
 const sub = (a: readonly number[], b: readonly number[]) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 
 // 当たり判定用の三角形（Möller–Trumbore 法で解くための値を前もって持つ）
-interface Tri { a: number[]; e1: number[]; e2: number[] }
+interface Tri { a: number[]; e1: number[]; e2: number[]; id: number }
 
 // 多角形を、表が toward を向く順に並べ直す
 function facingPts(p: Poly) {
@@ -155,13 +155,13 @@ export class Surfaces {
   // 会場の面を、材質ごとに1つのメッシュにまとめる。縁の線は面ごと（裏向きのとき隠すため）
   private buildVenue(polys: Poly[]) {
     const byMat = new Map<VenueMaterial, number[]>();
-    for (const p of polys) {
+    polys.forEach((p, id) => {
       const pts = facingPts(p);
       const list = byMat.get(p.mat) ?? [];
       byMat.set(p.mat, list);
       for (let i = 1; i < pts.length - 1; i++) {
         list.push(...pts[0], ...pts[i], ...pts[i + 1]);
-        this.tris.push({ a: pts[0], e1: sub(pts[i], pts[0]), e2: sub(pts[i + 1], pts[0]) });
+        this.tris.push({ a: pts[0], e1: sub(pts[i], pts[0]), e2: sub(pts[i + 1], pts[0]), id });
       }
       const edge: number[] = [];
       for (let i = 0; i < pts.length; i++) edge.push(...pts[i], ...pts[(i + 1) % pts.length]);
@@ -171,7 +171,7 @@ export class Surfaces {
       this.group.add(lines);
       const mid = [0, 1, 2].map(k => pts.reduce((sum, q) => sum + q[k], 0) / pts.length);
       this.facing.push({ lines, n: cross(sub(pts[1], pts[0]), sub(pts[2], pts[0])), mid });
-    }
+    });
     for (const [mat, list] of byMat) {
       const geo = new BufferGeometry();
       geo.setAttribute('position', new BufferAttribute(new Float32Array(list), 3));
@@ -185,7 +185,11 @@ export class Surfaces {
   }
 
   // 点 o から方向 d へ飛ぶ光が最初に当たる所。o + d * t の t を返す（何にも当たらなければ Infinity）
+  // 最後に hit で当たった面の番号（別の面に当たった2本のビームの間は、膜をそのままつながない）
+  lastId = -1;
+
   hit(o: readonly number[], d: readonly number[]): number {
+    this.lastId = -1;
     if (this.kind === 'none') return Infinity;
     if (this.room) return this.hitTris(o, d);
     const [ox, oy, oz] = o, [dx, dy, dz] = d;
@@ -194,20 +198,24 @@ export class Surfaces {
       const t = (target - p) / v;
       return t > 1e-6 ? t : Infinity;
     };
-    let t = plane(oz, dz, -this.d);
-    t = Math.min(t, plane(oy, dy, -this.floor));
+    // 面ごとに番号を付ける（0: 壁、1: 床、2: 横の壁、3: 物）
+    let t = Infinity;
+    const take = (v: number, id: number) => { if (v < t) { t = v; this.lastId = id; } };
+    take(plane(oz, dz, -this.d), 0);
+    take(plane(oy, dy, -this.floor), 1);
     switch (this.kind) {
       case 'corner':
-        t = Math.min(t, plane(ox, dx, -this.sideX()));
+        take(plane(ox, dx, -this.sideX()), 2);
         break;
       case 'sphere':
-        t = Math.min(t, this.sphere(o, d));
+        take(this.sphere(o, d), 3);
         break;
       case 'cube':
-        t = Math.min(t, this.cube(o, d));
+        // 立方体は面ごとに分けない（角では奥行きの差で分かれる）
+        take(this.cube(o, d), 3);
         break;
       case 'cylinder':
-        t = Math.min(t, this.cylinder(o, d));
+        take(this.cylinder(o, d), 3);
         break;
     }
     return t;
@@ -231,7 +239,7 @@ export class Surfaces {
       const v = (d[0] * qx + d[1] * qy + d[2] * qz) * inv;
       if (v < 0 || u + v > 1) continue;
       const dist = (e2[0] * qx + e2[1] * qy + e2[2] * qz) * inv;
-      if (dist > 1e-6 && dist < best) best = dist;
+      if (dist > 1e-6 && dist < best) { best = dist; this.lastId = t.id; }
     }
     return best;
   }

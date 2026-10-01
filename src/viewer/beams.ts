@@ -333,6 +333,7 @@ export class Beams {
     d[1] = py;
     d[2] = -tx * this.sin + pz * this.cos;
     const t = this.surfaces.hit(o, d);
+    this.lastId = this.surfaces.lastId;
     // 当たらないビームは一定の長さで止め、先へ行くほど消えていく
     const reach = Number.isFinite(t) ? t : this.rig.distance * 1.2;
     out[0] = o[0] + d[0] * reach;
@@ -359,11 +360,15 @@ export class Beams {
     this.projectors = list.length ? list : this.projectors;
   }
 
-  // 2本のビームが別々の物に当たっている（奥行きが飛んでいる）か
-  private split(ta: number, tb: number) {
+  // 2本のビームが別々の面に当たっている（または奥行きが飛んでいる）か。
+  // 別の面どうしを膜でそのままつなぐと、当たらないはずの所（箱の横の面など）を光が横切ってしまう
+  private split(ta: number, ia: number, tb: number, ib: number) {
     if (!Number.isFinite(ta) || !Number.isFinite(tb)) return Number.isFinite(ta) !== Number.isFinite(tb);
-    return Math.abs(ta - tb) > 0.15 * Math.max(ta, tb);
+    return ia !== ib || Math.abs(ta - tb) > 0.15 * Math.max(ta, tb);
   }
+  private lastId = -1;
+  private ia = -1;
+  private ib = -1;
 
   // 線分の両端の当たる位置と奥行き。隣の線分と端を共有するので、1点につき1回だけ計算して使い回す
   private a = [0, 0, 0];
@@ -377,10 +382,13 @@ export class Beams {
     if (this.cached === key) {
       const t = this.a; this.a = this.b; this.b = t;
       this.ta = this.tb;
+      this.ia = this.ib;
     } else {
       this.ta = this.hit(x0, y0, this.a);
+      this.ia = this.lastId;
     }
     this.tb = this.hit(x1, y1, this.b);
+    this.ib = this.lastId;
     this.cached = next;
     this.p0[0] = x0; this.p0[1] = y0; this.p1[0] = x1; this.p1[1] = y1;
     this.edged = false;
@@ -398,18 +406,19 @@ export class Beams {
   private edge() {
     if (this.edged) return this.edgeOk;
     this.edged = true;
-    let lo = 0, hi = 1, tLo = this.ta, tHi = this.tb;
+    let lo = 0, hi = 1, tLo = this.ta, tHi = this.tb, iLo = this.ia, iHi = this.ib;
     const ea = this.ea, eb = this.eb;
     ea.splice(0, 3, ...this.a);
     eb.splice(0, 3, ...this.b);
     for (let i = 0; i < 8; i++) {
       const m = (lo + hi) / 2;
       const t = this.hit(this.p0[0] + (this.p1[0] - this.p0[0]) * m, this.p0[1] + (this.p1[1] - this.p0[1]) * m, this.tmp);
-      if (!this.split(tLo, t)) { lo = m; tLo = t; ea.splice(0, 3, ...this.tmp); }
-      else { hi = m; tHi = t; eb.splice(0, 3, ...this.tmp); }
+      const id = this.lastId;
+      if (!this.split(tLo, iLo, t, id)) { lo = m; tLo = t; iLo = id; ea.splice(0, 3, ...this.tmp); }
+      else { hi = m; tHi = t; iHi = id; eb.splice(0, 3, ...this.tmp); }
     }
     // 縁の両側がそれぞれつながっていれば、そこで分けて描ける
-    this.edgeOk = !this.split(tHi, this.tb) || hi === 1;
+    this.edgeOk = !this.split(tHi, iHi, this.tb, this.ib) || hi === 1;
     return this.edgeOk;
   }
 
@@ -424,7 +433,7 @@ export class Beams {
 
   private sheet(r: number, g: number, b: number, k: number) {
     r *= k; g *= k; b *= k;
-    if (!this.split(this.ta, this.tb)) { this.tri(this.a, this.b, r, g, b); return; }
+    if (!this.split(this.ta, this.ia, this.tb, this.ib)) { this.tri(this.a, this.b, r, g, b); return; }
     // 物の縁をまたぐ膜は、そのまま張ると手前の物を突き抜けるので、縁で2枚に分ける
     if (!this.edge()) return;
     this.tri(this.a, this.ea, r, g, b);
@@ -444,7 +453,7 @@ export class Beams {
     const ta = this.ta, tb = this.tb;
     if (!Number.isFinite(ta) && !Number.isFinite(tb)) return;
     k *= Math.exp(-this.haze.uExt.value * ((Number.isFinite(ta) ? ta : tb) + (Number.isFinite(tb) ? tb : ta)) / 2);
-    if (!this.split(ta, tb)) { this.line(this.a, this.b, r * k, g * k, b * k); return; }
+    if (!this.split(ta, this.ia, tb, this.ib)) { this.line(this.a, this.b, r * k, g * k, b * k); return; }
     // 縁をまたぐときは、縁の両側で別々に引く（何にも当たらない側は引かない）
     if (!this.edge()) return;
     if (Number.isFinite(ta)) this.line(this.a, this.ea, r * k, g * k, b * k);
