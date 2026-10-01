@@ -16,6 +16,8 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; }
+/* ダブルタップで拡大しない（ダブルタップは値を初期値に戻す操作に使う）。ピンチでの拡大はできる */
+html { touch-action: manipulation; }
 /* ドラッグ操作で文字が選択されないようにする（ツールのUIなので）。入力欄だけは選べる */
 body { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 input, textarea { user-select: text; -webkit-user-select: text; }

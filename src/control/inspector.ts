@@ -51,7 +51,7 @@ export function buildInspector(root: HTMLElement, store: Store, channel: string)
     for (const p of PARAMS.filter(p => p.group === g.id && !IN_TOOLBAR.has(p.key))) {
       const [row, update] = paramRow(p, store);
       // 初期値から変えた項目には印を付け、名前のダブルクリックで戻せるようにする
-      row.querySelector('label')!.addEventListener('dblclick', () => store.set({ [p.key]: DEFAULTS[p.key] } as Partial<Settings>));
+      onDoubleTap(row.querySelector('label')!, () => store.set({ [p.key]: DEFAULTS[p.key] } as Partial<Settings>));
       rows.append(row);
       updaters.push(st => {
         update(st);
@@ -163,4 +163,15 @@ function isDefault(p: ParamDef, s: Readonly<Settings>) {
   // 数値は表示している桁で比べる（ドラッグで丸めた値と初期値の小さなずれは同じとみなす）
   if (p.kind === 'number') return Math.abs((v as number) - (d as number)) < 0.5 * 10 ** -p.digits;
   return v === d;
+}
+
+// ダブルクリックと、スマホのダブルタップ（Safariでは dblclick が来ないことがあるので自分で数える）
+function onDoubleTap(el: HTMLElement, fn: () => void) {
+  el.addEventListener('dblclick', fn);
+  let last = 0;
+  el.addEventListener('pointerup', e => {
+    if (e.pointerType !== 'touch') return;
+    const now = e.timeStamp;
+    if (now - last < 350) { fn(); last = 0; } else last = now;
+  });
 }
