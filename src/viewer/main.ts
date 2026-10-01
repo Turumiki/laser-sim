@@ -133,10 +133,14 @@ interface ViewerSettings {
   render: RenderMode;
 }
 const RIG_KEY = 'laser:viewer';
-const vs: ViewerSettings = {
+// 初期値（チャンネルの割り当ては除く）
+const VIEWER_DEFAULTS: Omit<ViewerSettings, 'channels'> = {
   // スマホのGPUは非力なので、初めて開いたときは軽い画質にする
-  channels: [channel],
   quality: matchMedia('(pointer: coarse)').matches ? 'low' : 'mid', haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, extinction: 0.3, flat: 0, work: 0.3, eye: false, rolling: false, readout: 16, target: 'wall', count: 1, spacing: 2, layout: 'parallel', view: 'audience', render: 'vector',
+};
+const vs: ViewerSettings = {
+  channels: [channel],
+  ...VIEWER_DEFAULTS,
   ...loadLocal<ViewerSettings>(RIG_KEY),
 };
 if (!VIEWS.some(v => v.id === vs.view)) vs.view = 'audience';
@@ -465,6 +469,17 @@ function buildRigPanel() {
     ['readout', '読み出し時間 ms', 1, 40, 1],
   ];
   panel.innerHTML = '<h3>3D</h3>';
+  // 設定を初期値に戻す。チャンネルの割り当てはそのまま。URLで指定した値も外して開き直す
+  const reset = document.createElement('button');
+  reset.className = 'reset';
+  reset.textContent = '初期値に戻す';
+  reset.title = '3Dビューアの設定をすべて初期値に戻す（台ごとのチャンネルはそのまま）';
+  reset.addEventListener('click', () => {
+    saveLocal(RIG_KEY, { ...VIEWER_DEFAULTS, channels: vs.channels });
+    const ch = params.get('ch');
+    location.href = location.pathname + (ch ? `?ch=${encodeURIComponent(ch)}` : '');
+  });
+  panel.querySelector('h3')!.append(reset);
   const qualityRow = document.createElement('label');
   const quality = document.createElement('select');
   for (const [id, q] of Object.entries(QUALITY)) quality.add(new Option(q.label, id));
