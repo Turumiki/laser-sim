@@ -7,6 +7,7 @@ import { FrameTimer, startLoop } from '../engine/loop';
 import { connectSync, type SyncStatus } from '../sync/client';
 import { buildInspector } from './inspector';
 import { buildPatternGrid } from './pattern-grid';
+import { preventDoubleTapZoom } from './dom';
 import { buildSequence } from './sequence';
 import { buildTabs } from './tabs';
 import { fastTooltips } from './tooltip';
@@ -49,6 +50,7 @@ inspector = buildInspector($('inspector'), store, channel);
 buildPatternGrid($('patterns'), store);
 buildTabs($('bottom'));
 fastTooltips();
+preventDoubleTapZoom();
 attachViewer($('viewer'), canvas, store);
 
 addEventListener('keydown', e => {

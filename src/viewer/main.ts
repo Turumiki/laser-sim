@@ -19,6 +19,7 @@ import { VolumePass, type VolumeProjector } from './volume';
 import { EYE_GAIN } from '../core/color';
 import { Beams, type Projector, type Rig, type Source } from './beams';
 import { ROOMS, setEdgeLevel, Surfaces, TARGETS, type TargetKind } from './surfaces';
+import { preventDoubleTapZoom } from '../control/dom';
 import { arenaLayout } from './venues';
 
 // レーザーが空間にどう出るかを3Dで見る（隠し機能）。設定は操作画面と同期する
@@ -441,6 +442,7 @@ refreshChannels();
 buildRigPanel();
 fastTooltips();
 // 開発中だけ、ブラウザのコンソールから中身を見られるようにする
+preventDoubleTapZoom();
 if (import.meta.env.DEV) Object.assign(window, { laser3d: { renderer, feeds } });
 
 // ?stats=1 で、fps と1フレームの処理時間（CPU側）を出す
