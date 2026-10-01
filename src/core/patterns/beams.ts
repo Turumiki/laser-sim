@@ -1,5 +1,6 @@
 import type { Pattern } from './registry';
 
+const TAU = Math.PI * 2;
 const tri = (u: number) => 1 - Math.abs(2 * u - 1);
 
 // ヘイズの中で光の筋として見せる前提の演出
@@ -66,9 +67,9 @@ export const beams: Pattern[] = [
   {
     // 並んだビームが1本ずつ順番に点く（照明のチェイスと同じ）。行って戻る
     id: 'chase', name: 'ビームチェイス', category: 'beam',
-    hint: '横に並んだ9本のビームが、1本ずつ順番に高速で点いていく',
-    draw(f, t) {
-      const n = 9, step = Math.floor(t * 18), k = step % (2 * n - 2);
+    hint: '横に並んだ9本のビームが、1本ずつ順番に点いていく（8分音符ごと。速さはBPM）',
+    draw(f, _t, beat) {
+      const n = 9, step = Math.floor(beat * 2), k = step % (2 * n - 2);
       const i = k < n ? k : 2 * n - 2 - k;
       f.moveTo((i / (n - 1) * 2 - 1) * 0.8, 0);
       f.dwell(40);
@@ -77,14 +78,58 @@ export const beams: Pattern[] = [
   {
     // たくさんの置き場所から、毎回ばらばらに数本だけ光らせる。時間から決めるので、書き出しても毎回同じ並び
     id: 'sparkle', name: 'スパークル', category: 'beam',
-    hint: '客席の上に散らばった点のうち、ランダムに選んだ数本だけが一瞬ずつ光る',
-    draw(f, t) {
-      const slots = 48, lit = 5, step = Math.floor(t * 15);
+    hint: '客席の上に散らばった点のうち、ランダムに選んだ数本だけが一瞬ずつ光る（16分音符ごと。速さはBPM）',
+    draw(f, _t, beat) {
+      const slots = 48, lit = 5, step = Math.floor(beat * 4);
       for (let j = 0; j < lit; j++) {
         const s = Math.floor(rand(step * 7.13 + j * 1.71) * slots);
         // 横に広く、縦は少しだけ散らす
         f.moveTo((rand(s * 3.1) * 2 - 1) * 0.9, (rand(s * 5.7 + 1) * 2 - 1) * 0.25);
         f.dwell(10);
+      }
+    },
+  },
+  {
+    // 並んだビームの高さが、波のように1本ずつずれて上下する。2拍で1往復
+    id: 'beamwave', name: 'ビームウェーブ', category: 'beam',
+    hint: '並んだ9本のビームの高さが、波のように1本ずつずれて上下する（2拍で1往復）',
+    draw(f, _t, beat) {
+      const n = 9;
+      for (let i = 0; i < n; i++) {
+        f.moveTo((i / (n - 1) * 2 - 1) * 0.8, 0.3 * Math.sin(Math.PI * beat - i * 0.7));
+        f.dwell(10);
+      }
+    },
+  },
+  {
+    // 光の膜を8分音符で点滅させる。点いている間だけ描き、消えている間は何も出さない
+    id: 'strobe', name: 'ストロボ', category: 'beam',
+    hint: '横一面の光の膜が、8分音符ごとにパッと光る（速さはBPM）',
+    draw(f, _t, beat) {
+      if ((beat * 2) % 1 > 0.35) return;
+      f.curve((u, p) => { p.x = -0.9 + 1.8 * u; p.y = 0; });
+    },
+  },
+  {
+    // 小さな円は、ヘイズの中では中が空洞の円錐になる。4拍で開いて閉じ、8拍でゆっくり首を振る
+    id: 'cone', name: 'コーン', category: 'beam',
+    hint: '小さな円を描いて、ヘイズの中に中が空洞の円錐を作る。開いたり閉じたりしながら首を振る',
+    draw(f, _t, beat) {
+      const r = 0.1 + 0.12 * (0.5 + 0.5 * Math.sin(Math.PI * beat / 2));
+      const cx = 0.15 * Math.cos(Math.PI * beat / 4), cy = 0.1 * Math.sin(Math.PI * beat / 4);
+      f.curve((u, p) => { p.x = cx + r * Math.cos(u * TAU); p.y = cy + r * Math.sin(u * TAU); });
+    },
+  },
+  {
+    // 2枚の光の膜をX字に交差させる。4拍で開いて閉じ、全体がゆっくり回る
+    id: 'cross', name: 'クロス', category: 'beam',
+    hint: '2枚の光の膜をX字に交差させ、開いたり閉じたりしながら回す',
+    draw(f, _t, beat) {
+      const open = 0.25 + 0.45 * (0.5 + 0.5 * Math.sin(Math.PI * beat / 2)), rot = Math.PI * beat / 16;
+      for (const a of [rot + open, rot - open]) {
+        const x = 0.85 * Math.cos(a), y = 0.85 * Math.sin(a);
+        f.moveTo(-x, -y);
+        f.lineTo(x, y);
       }
     },
   },

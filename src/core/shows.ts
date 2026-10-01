@@ -92,4 +92,28 @@ export const BUILTIN_SHOWS: readonly Show[] = [
       cue(8, { pattern: 'spiro', colorMode: 'rainbow' }),
     ],
   },
+  {
+    // 曲のビートに合わせて動くパターンだけで組んだショー。どのステップもアニメ速度は1（拍がずれないように）
+    id: 'beat', name: 'ビート', bpm: 140, loop: true,
+    steps: [
+      // カウントイン → 円錐で始めて、ウェーブとチェイスで温める
+      cue(4, { pattern: 'count', color: WHITE }),
+      cue(8, { pattern: 'cone', color: CYAN, offY: 0.3 }),
+      cue(8, { pattern: 'beamwave', color: GREEN, offY: 0.3 }),
+      cue(4, { pattern: 'chase', color: MAGENTA, offY: 0.3 }),
+      cue(4, { pattern: 'chase', color: CYAN, offY: 0.3, angle: 180 }),
+      // 交差する膜から、ストロボで一度落とす
+      cue(8, { pattern: 'cross', color: BLUE, offY: 0.2 }),
+      cue(4, { pattern: 'strobe', color: WHITE, offY: 0.35 }),
+      cue(4, { pattern: 'sparkle', colorMode: 'rainbow', offY: 0.3 }),
+      // 図形
+      cue(8, { pattern: 'heart', color: RED, size: 0.6 }),
+      cue(8, { pattern: 'spiral', colorMode: 'rainbow', size: 0.7 }),
+      // 盛り上げて、暗転で次の周へ
+      cue(4, { pattern: 'cone', color: MAGENTA, offY: 0.3, size: 1.1 }),
+      cue(8, { pattern: 'beamwave', colorMode: 'rainbow', offY: 0.3 }),
+      cue(4, { pattern: 'strobe', colorMode: 'cycle', offY: 0.35 }),
+      cue(2, { pattern: 'blackout' }),
+    ],
+  },
 ];

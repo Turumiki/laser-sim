@@ -9,8 +9,9 @@ export interface Pattern {
   category: PatternCategory;
   // ツールチップ
   hint?: string;
-  // t: アニメーション時間（秒）。時計は見ずに必ずこれを使う
-  draw(f: FrameBuilder, t: number): void;
+  // t: アニメーション時間（秒）。時計は見ずに必ずこれを使う。
+  // beat: 同じ時間を拍で数えたもの（t × BPM ÷ 60）。曲に合わせて動くパターンはこちらを使う
+  draw(f: FrameBuilder, t: number, beat: number): void;
 }
 
 const patterns = new Map<string, Pattern>();

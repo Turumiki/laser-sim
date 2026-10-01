@@ -93,4 +93,50 @@ export const shapes: Pattern[] = [
       });
     },
   },
+  {
+    // 拍の頭で「どくん」と2回脈打つハート
+    id: 'heart', name: 'ハート', category: 'shape',
+    hint: '拍に合わせて脈打つハート',
+    draw(f, _t, beat) {
+      const p0 = beat % 1, pulse = Math.exp(-14 * p0) + 0.6 * Math.exp(-14 * Math.abs(p0 - 0.22));
+      const k = (0.8 + 0.08 * pulse) / 17;
+      f.curve((u, p) => {
+        const a = u * TAU, sn = Math.sin(a);
+        p.x = k * 16 * sn * sn * sn;
+        p.y = k * (13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a)) + 0.08;
+      });
+    },
+  },
+  {
+    // 中心から外へ3周の渦巻き。8拍で1回転
+    id: 'spiral', name: 'スパイラル', category: 'shape',
+    hint: '中心から外へ広がる渦巻き。回すと吸い込まれるように見える',
+    draw(f, _t, beat) {
+      const rot = Math.PI * beat / 4;
+      f.curve((u, p) => {
+        const r = 0.04 + 0.86 * u, a = u * 3 * TAU + rot;
+        p.x = r * Math.cos(a);
+        p.y = r * Math.sin(a);
+      });
+    },
+  },
+  {
+    // 1拍ごとに 4, 3, 2, 1 と数える（カウントイン）。BPMを60にすれば1秒ごとのカウントダウン
+    id: 'count', name: 'カウント', category: 'shape',
+    hint: '1拍ごとに 4・3・2・1 と数字を出す。BPMを60にすると1秒ごとのカウントダウン',
+    draw(f, _t, beat) {
+      const n = 4 - (Math.floor(beat) % 4);
+      // 数字の線（幅1・高さ1.6の枠の中）を、真ん中に大きく描く
+      const k = 0.7, ox = -0.5 * k, oy = -0.8 * k;
+      for (const line of DIGITS[n]) f.poly(line.flatMap((v, i) => [i % 2 ? oy + v * k : ox + v * k]), false);
+    },
+  },
 ];
+
+// 数字の形（幅1・高さ1.6の枠の中の折れ線）。カウントで使う 1〜4
+const DIGITS: Record<number, number[][]> = {
+  1: [[0.25, 1.3, 0.55, 1.6, 0.55, 0]],
+  2: [[0, 1.25, 0.2, 1.55, 0.5, 1.6, 0.8, 1.55, 1, 1.3, 0.95, 1.0, 0, 0, 1, 0]],
+  3: [[0.05, 1.6, 1, 1.6, 0.45, 0.95, 0.8, 0.88, 1, 0.55, 0.85, 0.12, 0.5, 0, 0.15, 0.08, 0, 0.3]],
+  4: [[0.75, 0, 0.75, 1.6, 0, 0.45, 1, 0.45]],
+};

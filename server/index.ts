@@ -74,7 +74,14 @@ function targetsOf(msg: Record<string, unknown>) {
 }
 
 function showCommand(ch: string, msg: Record<string, unknown>) {
-  if (msg.action === 'play') shows.play(ch, msg.id);
+  if (msg.action === 'play') {
+    // 頭から始めるときは時間軸も頭に揃える（ビートで動くパターンの拍がショーと合う）
+    const t0 = Date.now();
+    if (shows.play(ch, msg.id, t0)) {
+      clocks.reset(ch, merged(ch), t0);
+      broadcast(ch, {}, null, true);
+    }
+  }
   else if (msg.action === 'stop') shows.stop(ch);
   else if (msg.action === 'save') shows.saveCustom(ch, msg.show);
   else if (msg.action === 'playAll') {

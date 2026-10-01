@@ -27,6 +27,7 @@ export interface Settings {
   pincushion: boolean;
   density: number;
   animSpeed: number;
+  bpm: number;
   timeScale: number;
 
   exposureShape: ExposureShape;
@@ -109,6 +110,7 @@ export const PARAMS: readonly ParamDef[] = [
   { kind: 'number', key: 'angle', label: '角度', hint: '回転角', group: 'content', min: 0, max: 360, digits: 0, unit: '°' },
   { kind: 'number', key: 'rotSpeed', label: '回転', hint: '1秒あたりの回転量', group: 'content', min: -360, max: 360, digits: 0, unit: '°/s' },
   { kind: 'number', key: 'animSpeed', label: 'アニメ速度', hint: 'パターンの動きの速さ。0で静止', group: 'content', min: 0, max: 4, digits: 2 },
+  { kind: 'number', key: 'bpm', label: 'BPM', hint: 'ビートに合わせて動くパターン（ストロボ・チェイス・ビームウェーブなど）のテンポ。シーケンスを流すと、ショーのBPMになる。アニメ速度を2にすると倍の速さ', group: 'content', min: 40, max: 240, digits: 0 },
 
   { kind: 'enum', key: 'mode', label: '描画方式', hint: 'ベクター: ILDAデータの図形をそのまま描く。スキャン: pps、スキャナ性能、減衰、カラーシフトを反映して実機の見え方を再現する', group: 'projector', options: [
     { value: 'clean', label: 'ベクター' },
@@ -172,6 +174,7 @@ export const DEFAULTS: Readonly<Settings> = {
   pincushion: true,
   density: 0.025,
   animSpeed: 1,
+  bpm: 128,
   timeScale: 1,
   exposureShape: 'box',
   exposureSync: true,

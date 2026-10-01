@@ -79,7 +79,8 @@ export class ShowPlayer {
       }
       if (pos.index !== st.index) {
         st.index = pos.index;
-        this.apply(ch, show.steps[pos.index].values as Record<string, unknown>);
+        // ビートで動くパターンが曲に合うよう、ショーのBPMも一緒に渡す
+        this.apply(ch, { ...show.steps[pos.index].values as Record<string, unknown>, bpm: show.bpm });
         this.notify(ch);
       }
     }

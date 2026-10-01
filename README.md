@@ -55,7 +55,7 @@ curl -X POST http://localhost:8765/api/show -d '{"action":"play","id":"opening"}
 curl -X POST http://localhost:8765/api/show -d '{"action":"stop"}'
 ```
 
-組み込みのショーは `opening`、`festival`、`beams`、`graphics`。操作画面で作ったものは `custom`。
+組み込みのショーは `opening`、`festival`、`beams`、`graphics`、`beat`（ビートで動くパターンだけのもの）。操作画面で作ったものは `custom`。
 
 複数のチャンネルを同じ瞬間に始める（`channels` を省くと全チャンネル）:
 

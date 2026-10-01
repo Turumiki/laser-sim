@@ -16,7 +16,7 @@ export function buildFrame(out: Frame, s: Readonly<Settings>, t: number) {
   const travel = Math.min(0.2, Math.max(0.004, vmax * 0.85));
   const settle = Math.min(6, Math.max(0.5, (30 / s.scannerK) * (s.pps / 30000)));
   builder.reset(out, s.density, travel, settle);
-  getPattern(s.pattern).draw(builder, t);
+  getPattern(s.pattern).draw(builder, t, t * s.bpm / 60);
   builder.closeLoop();
   if (out.length === 0) out.push(0, 0, false);
 
