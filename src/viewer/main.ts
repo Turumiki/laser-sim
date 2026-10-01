@@ -128,6 +128,8 @@ interface ViewerSettings {
   extinction: number;
   // 映像の描き方で、遠くの減衰を弱める量
   flat: number;
+  // ヘイズが流れる速さ（1で空調くらい、0で止まる）
+  flow: number;
   // 作業灯（会場の形を見るための明かり）の明るさ
   work: number;
   // 人の目の色ごとの感度で見る（緑は明るく、赤・青は暗く見える）
@@ -149,7 +151,7 @@ const RIG_KEY = 'laser:viewer';
 // 初期値（チャンネルの割り当ては除く）
 const VIEWER_DEFAULTS: Omit<ViewerSettings, 'channels'> = {
   // スマホのGPUは非力なので、初めて開いたときは軽い画質にする
-  quality: matchMedia('(pointer: coarse)').matches ? 'low' : 'mid', haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, extinction: 0.3, flat: 0, work: 0.3, eye: false, rolling: false, readout: 16, target: 'wall', count: 1, spacing: 2, layout: 'parallel', place: 'rig', view: 'audience', render: 'vector',
+  quality: matchMedia('(pointer: coarse)').matches ? 'low' : 'mid', haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, extinction: 0.3, flat: 0, flow: 1, work: 0.3, eye: false, rolling: false, readout: 16, target: 'wall', count: 1, spacing: 2, layout: 'parallel', place: 'rig', view: 'audience', render: 'vector',
 };
 const vs: ViewerSettings = {
   channels: [channel],
@@ -449,6 +451,7 @@ if (stats) {
   setInterval(() => { stats.textContent = `${fps.toFixed(0)} fps · CPU ${cpu.toFixed(2)} ms`; }, 250);
 }
 
+let hazeTime = 0;
 startLoop(dt => {
   const t0 = performance.now();
   if (dt > 0) fps += (1 / dt - fps) * 0.05;
@@ -488,7 +491,9 @@ startLoop(dt => {
     cookies.update(new Set());
     beams.draw(feedOrder.map(f => sources.get(f)!));
   }
-  beams.haze.uTime.value = performance.now() / 1000;
+  // 流れの速さを変えても形が飛ばないよう、時間を積み上げる
+  hazeTime += dt * vs.flow;
+  beams.haze.uTime.value = hazeTime;
   controls.update();
   composer.render();
   cpu += (performance.now() - t0 - cpu) * 0.05;
@@ -515,6 +520,7 @@ function buildRigPanel() {
     ['work', '作業灯', 0, 1, 0.05],
     ['smoke', 'ヘイズのむら', 0, 1, 0.05],
     ['grain', 'むらの細かさ', 0.2, 2, 0.05],
+    ['flow', 'ヘイズの流れ', 0, 3, 0.1],
     ['extinction', 'ヘイズの減衰', 0, 1, 0.05],
     ['flat', '距離減衰の補正（クッキー）', 0, 1, 0.05],
     ['readout', '読み出し時間 ms', 1, 40, 1],

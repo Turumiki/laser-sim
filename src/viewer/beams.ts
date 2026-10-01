@@ -153,15 +153,16 @@ export const SMOKE_GLSL = `
   }
   float smoke1(vec3 w) {
     // ヘイズは横に広がって層になりやすいので、縦方向を詰める
-    vec3 p = w * uGrain * vec3(0.7, 1.8, 0.7) + vec3(uTime * 0.05, uTime * 0.02, -uTime * 0.04);
+    // 空調や送風で流される（横に速く、上下はゆっくり）。uTime は流れの速さを掛けた時間
+    vec3 p = w * uGrain * vec3(0.7, 1.8, 0.7) + vec3(uTime * 0.2, uTime * 0.03, -uTime * 0.12);
     float d;
     if (uProcedural > 0.5) {
       // 流れながら形も変わるよう、歪ませる量を時間で動かす
-      vec3 q = p * 0.5 + vec3(0.0, 0.0, uTime * 0.07);
+      vec3 q = p * 0.5 + vec3(0.0, 0.0, uTime * 0.2);
       p += 1.6 * (vec3(noise(q + 3.1), noise(q + 7.4), noise(q + 1.3)) - 0.5);
       d = fbm(p) * 0.7 + (1.0 - abs(2.0 * noise(p * 2.3) - 1.0)) * 0.3;
     } else {
-      p += 1.6 * (tex(p * 0.5 + vec3(3.1, 7.4, uTime * 0.07)) - 0.5);
+      p += 1.6 * (tex(p * 0.5 + vec3(3.1, 7.4, uTime * 0.2)) - 0.5);
       d = tex(p) * 0.7 + (1.0 - abs(2.0 * tex(p * 2.3 + 5.0) - 1.0)) * 0.3;
     }
     return smoothstep(0.38, 0.72, d);
