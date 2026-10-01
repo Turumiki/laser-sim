@@ -1,6 +1,6 @@
 import {
   BoxGeometry, BufferAttribute, BufferGeometry, CylinderGeometry, DoubleSide, Group, LineBasicMaterial, LineSegments, Matrix4,
-  Mesh, MeshBasicMaterial, PlaneGeometry, SphereGeometry, Vector3,
+  Mesh, MeshLambertMaterial, PlaneGeometry, SphereGeometry, Vector3,
 } from 'three';
 
 export type TargetKind = 'wall' | 'sphere' | 'cube' | 'cylinder' | 'corner' | 'hall' | 'arena' | 'none';
@@ -34,11 +34,15 @@ export const ROOMS: Partial<Record<TargetKind, Room>> = {
   arena: { width: 70, height: 30, floor: 5, depth: 110, stage: 18, stands: { inset: 12, height: 12 } },
 };
 const DEFAULT_FLOOR = 2.2;
-const material = new MeshBasicMaterial({ color: 0x161616 });
-const roomMaterial = new MeshBasicMaterial({ color: 0x161616, side: DoubleSide });
-const standMaterial = new MeshBasicMaterial({ color: 0x1d1d1d, side: DoubleSide });
-// 暗い会場でも形が分かるよう、面の縁に薄く線を引く
+// 面は作業灯（ビューアの明かり）で照らす。向きで明るさが変わるので、床・壁・天井の区別が付く
+const material = new MeshLambertMaterial({ color: 0x8c8c8c });
+const roomMaterial = new MeshLambertMaterial({ color: 0x8c8c8c, side: DoubleSide });
+const standMaterial = new MeshLambertMaterial({ color: 0xa0a0a0, side: DoubleSide });
+// 暗い会場でも形が分かるよう、面の縁に薄く線を引く（作業灯が明るいほど濃く）
 const edgeMaterial = new LineBasicMaterial({ color: 0x333333 });
+export function setEdgeLevel(k: number) {
+  edgeMaterial.color.setScalar(0.2 + 0.25 * k);
+}
 
 // 長方形の面。点 = p + a*u + b*v（0≦a,b≦1、u と v は直交）
 interface Quad {
@@ -94,6 +98,7 @@ function quadMesh(q: Quad) {
   const pts = [c(0, 0), c(1, 0), c(1, 1), c(0, 0), c(1, 1), c(0, 1)].flat();
   const geo = new BufferGeometry();
   geo.setAttribute('position', new BufferAttribute(new Float32Array(pts), 3));
+  geo.computeVertexNormals();
   const edges = new BufferGeometry();
   edges.setAttribute('position', new BufferAttribute(new Float32Array(
     [c(0, 0), c(1, 0), c(1, 0), c(1, 1), c(1, 1), c(0, 1), c(0, 1), c(0, 0)].flat()), 3));

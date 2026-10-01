@@ -1,5 +1,5 @@
 import {
-  ACESFilmicToneMapping, BoxGeometry, Color, DepthTexture, GridHelper, Group, HalfFloatType, Mesh, MeshBasicMaterial, PerspectiveCamera,
+  ACESFilmicToneMapping, BoxGeometry, Color, DepthTexture, DirectionalLight, GridHelper, Group, HalfFloatType, HemisphereLight, Mesh, MeshBasicMaterial, PerspectiveCamera,
   Scene, Vector2, WebGLRenderer, WebGLRenderTarget,
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -18,7 +18,7 @@ import { Cookies } from './cookies';
 import { VolumePass, type VolumeProjector } from './volume';
 import { EYE_GAIN } from '../core/color';
 import { Beams, type Projector, type Rig, type Source } from './beams';
-import { ROOMS, Surfaces, TARGETS, type TargetKind } from './surfaces';
+import { ROOMS, setEdgeLevel, Surfaces, TARGETS, type TargetKind } from './surfaces';
 
 // レーザーが空間にどう出るかを3Dで見る（隠し機能）。設定は操作画面と同期する
 const params = new URLSearchParams(location.search);
@@ -117,6 +117,8 @@ interface ViewerSettings {
   extinction: number;
   // 映像の描き方で、遠くの減衰を弱める量
   flat: number;
+  // 作業灯（会場の形を見るための明かり）の明るさ
+  work: number;
   // 人の目の色ごとの感度で見る（緑は明るく、赤・青は暗く見える）
   eye: boolean;
   // ローリングシャッター（撮っているカメラが、画面を上の行から順に時間をずらして撮る）
@@ -134,7 +136,7 @@ const RIG_KEY = 'laser:viewer';
 const vs: ViewerSettings = {
   // スマホのGPUは非力なので、初めて開いたときは軽い画質にする
   channels: [channel],
-  quality: matchMedia('(pointer: coarse)').matches ? 'low' : 'mid', haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, extinction: 0.3, flat: 0, eye: false, rolling: false, readout: 16, target: 'wall', count: 1, spacing: 2, layout: 'parallel', view: 'audience', render: 'vector',
+  quality: matchMedia('(pointer: coarse)').matches ? 'low' : 'mid', haze: 1, distance: 8, bloom: 1, smoke: 0.6, grain: 0.6, extinction: 0.3, flat: 0, work: 0.3, eye: false, rolling: false, readout: 16, target: 'wall', count: 1, spacing: 2, layout: 'parallel', view: 'audience', render: 'vector',
   ...loadLocal<ViewerSettings>(RIG_KEY),
 };
 if (!VIEWS.some(v => v.id === vs.view)) vs.view = 'audience';
@@ -174,6 +176,19 @@ document.body.prepend(renderer.domElement);
 
 const scene = new Scene();
 scene.background = new Color(0x030303);
+
+// 作業灯。本番中の会場は真っ暗だが、形が分からないと見づらいので、弱い明かりを足せるようにする。
+// 上からの明かりと、斜め前からの明かりで、床・壁・天井の明るさに差を付ける
+const hemi = new HemisphereLight(0xd8e0ec, 0x202020, 0);
+const sun = new DirectionalLight(0xffffff, 0);
+sun.position.set(0.4, 1, -0.6);
+scene.add(hemi, sun);
+const applyWorkLight = () => {
+  hemi.intensity = vs.work * 0.9;
+  sun.intensity = vs.work * 0.7;
+  setEdgeLevel(vs.work);
+};
+applyWorkLight();
 
 const camera = new PerspectiveCamera(50, 1, 0.05, 2000);
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -441,6 +456,7 @@ function buildRigPanel() {
     ['haze', 'ヘイズ', 0.1, 5, 0.05],
     ['distance', '壁までの距離', 2, 150, 0.5],
     ['bloom', 'ブルーム', 0, 3, 0.05],
+    ['work', '作業灯', 0, 1, 0.05],
     ['smoke', 'ヘイズのむら', 0, 1, 0.05],
     ['grain', 'むらの細かさ', 0.2, 2, 0.05],
     ['extinction', 'ヘイズの減衰', 0, 1, 0.05],
@@ -539,6 +555,7 @@ function buildRigPanel() {
       if (key === 'distance') placeWall();
       else if (key === 'count' || key === 'spacing') { placeProjectors(); useChannels(); renderAssign(); }
       else if (key === 'bloom') applyBloom();
+      else if (key === 'work') applyWorkLight();
       else applySmoke();
       applyRig();
       saveLocal(RIG_KEY, vs);
