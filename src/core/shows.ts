@@ -116,4 +116,78 @@ export const BUILTIN_SHOWS: readonly Show[] = [
       cue(2, { pattern: 'blackout' }),
     ],
   },
+  {
+    // 歌もののライブ用に組んだ例。照明のキューシートを、レーザーで同じ意図になるように置き換えたもの。
+    // 照明のピンスポは「1本だけのビーム」、キャラを照らす全光は「明るい色で大きく動かす」に読み替えている
+    id: 'vocal', name: 'ボーカル曲', bpm: 138, loop: false,
+    steps: [
+      // 暗転 → フェードイン（4段で明るく）
+      cue(8, { pattern: 'blackout' }),
+      ...fade('liquidsky', [0.12, 0.3, 0.6, 1], CYAN, 4, { offY: 0.35 }),
+      // イントロ: 低めの扇をプラックに合わせて光らせる
+      cue(32, { pattern: 'beamflash', color: WHITE, offY: 0.1 }),
+      // イントロ後半: 暗めの1本 → スネアで白のストロボ
+      cue(8, { pattern: 'dot', color: dim(WHITE, 0.3), offY: 0.3 }),
+      cue(8, { pattern: 'strobe', color: WHITE, offY: 0.35 }),
+      // 間奏（8小節）: 明るく、奇数・偶数で交互に
+      cue(16, { pattern: 'oddeven', color: CYAN, offY: 0.25 }),
+      cue(16, { pattern: 'oddeven', color: MAGENTA, offY: 0.25 }),
+      // Aメロ: やわらかく。下がっていくフレーズに合わせてダウンスイープ
+      cue(24, { pattern: 'beamwave', color: GREEN, offY: 0.3 }),
+      cue(8, { pattern: 'downsweep', color: WHITE, offY: 0.1 }),
+      cue(32, { pattern: 'cone', color: BLUE, offY: 0.3 }),
+      // Bメロ: 4つ打ちでチェイス → 強調 → コール＆レスポンスでストロボ → 溜めて1本
+      cue(16, { pattern: 'chase', color: CYAN, offY: 0.25 }),
+      cue(8, { pattern: 'beamflash', color: MAGENTA, offY: 0.25 }),
+      cue(8, { pattern: 'strobe', color: WHITE, offY: 0.35 }),
+      cue(16, { pattern: 'cross', color: GREEN, offY: 0.2 }),
+      cue(4, { pattern: 'blackout' }),
+      cue(4, { pattern: 'dot', color: WHITE, offY: 0.3 }),
+      // サビ → 後奏（1文字ずつ広がる）
+      ...chorus(),
+      cue(16, { pattern: 'centerout', colorMode: 'source', offY: 0.25 }),
+      // 2番Aメロ: 雰囲気を変えて、色と数を絞る
+      cue(32, { pattern: 'liquidsky', color: BLUE, offY: 0.35 }),
+      cue(8, { pattern: 'chase', color: WHITE, offY: 0.25 }),
+      cue(8, { pattern: 'fan', color: CYAN, offY: 0.3 }),
+      // 2番サビ
+      ...chorus(),
+      // ブリッジ: 落として1本 → 虹色で派手に
+      cue(8, { pattern: 'dot', color: WHITE, offY: 0.3 }),
+      cue(4, { pattern: 'blackout' }),
+      cue(32, { pattern: 'sparkle', colorMode: 'rainbow', offY: 0.3 }),
+      cue(16, { pattern: 'centerout', colorMode: 'source', offY: 0.25 }),
+      cue(16, { pattern: 'chase', colorMode: 'rainbow', offY: 0.25 }),
+      cue(4, { pattern: 'strobe', colorMode: 'cycle', offY: 0.35 }),
+      // ラスサビ → 後奏
+      ...chorus(),
+      cue(4, { pattern: 'strobe', color: WHITE, offY: 0.35 }),
+      cue(16, { pattern: 'centerout', colorMode: 'source', offY: 0.25 }),
+      // イントロの繰り返し → ふわっと消えて暗転
+      cue(32, { pattern: 'beamflash', color: WHITE, offY: 0.1 }),
+      ...fade('liquidsky', [1, 0.6, 0.3, 0.12], CYAN, 2, { offY: 0.35 }),
+      cue(8, { pattern: 'blackout' }),
+    ],
+  },
 ];
+
+// 色を暗くする（k: 0〜1）。ショーの中でのフェードは、色を何段かに分けて暗くしていく
+function dim(hex: string, k: number) {
+  const n = parseInt(hex.slice(1), 16);
+  const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map(v => Math.round(v * k));
+  return '#' + c.map(v => v.toString(16).padStart(2, '0')).join('');
+}
+
+// 同じ絵柄を、明るさを変えながら何段か続ける（フェードイン・フェードアウト）
+function fade(pattern: string, levels: readonly number[], color: string, beats: number, values: Partial<Settings> = {}) {
+  return levels.map(k => cue(beats, { ...values, pattern, color: dim(color, k) }));
+}
+
+// サビ: 頭で落として1本 → 円の上を回るビームで派手に → 大きな円錐で次へ
+function chorus() {
+  return [
+    cue(4, { pattern: 'dot', color: WHITE, offY: 0.3 }),
+    cue(52, { pattern: 'circlechase', colorMode: 'cycle', offY: 0.3 }),
+    cue(8, { pattern: 'cone', color: CYAN, offY: 0.3, size: 1.1 }),
+  ];
+}
