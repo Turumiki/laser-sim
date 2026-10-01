@@ -47,7 +47,8 @@ export function buildAssetsPanel(root: HTMLElement, store: Store) {
     for (const a of list) {
       const id = assetPattern(a.id);
       const del = el('span', { class: 'del', title: '削除（もう一度押すと消える）' }, '×');
-      const b = el('button', { class: 'clip', title: `${a.name}（${KIND_LABEL[a.kind]}）` }, a.name, del);
+      // 名前が長くても × が隠れないよう、名前だけを省略する
+      const b = el('button', { class: 'clip asset', title: `${a.name}（${KIND_LABEL[a.kind]}）` }, el('span', { class: 'name' }, a.name), del);
       b.addEventListener('click', e => {
         if (e.target === del) return;
         store.set({ pattern: id, colorMode: 'source' });

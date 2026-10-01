@@ -200,7 +200,9 @@ button, input, select { font: inherit; color: inherit; }
 .pane[hidden] { display: none; }
 #patterns h4 { margin: 0 0 4px; font-size: 11px; font-weight: 600; color: var(--dim); }
 .clips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
-.clip .del { margin-left: 6px; color: var(--dim); font-size: 10px; }
+.clip.asset { display: flex; align-items: center; gap: 4px; }
+.clip.asset .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.clip .del { flex: none; padding: 2px 4px; margin-right: -4px; color: var(--dim); font-size: 10px; }
 .clip .del:hover, .clip .del.armed { color: var(--rec); }
 .clip.add { color: var(--dim); border-style: dashed; }
 .asset-tools { display: flex; align-items: center; gap: 8px; margin: -4px 0 8px; }
