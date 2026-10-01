@@ -76,6 +76,8 @@ export class FrameBuilder {
   private started = false;
   // moveTo（消灯して移動）した回数。1なら一筆書き
   private paths = 0;
+  // 点灯して進んだ長さ（その場に留まる点だけの図形を見分ける）
+  private litLen = 0;
   private fx = 0;
   private fy = 0;
   private cx = 0;
@@ -102,12 +104,14 @@ export class FrameBuilder {
     this.after = Math.max(2, Math.round(BLANK_AFTER * settleK));
     this.started = false;
     this.paths = 0;
+    this.litLen = 0;
     this.level = 1;
     this.rgb = null;
     this.rawMode = false;
   }
 
   private push(x: number, y: number, on: boolean) {
+    if (on) this.litLen += Math.hypot(x - this.cx, y - this.cy);
     this.frame.push(x, y, on, Math.round(this.level * 255), on ? this.rgb : null);
     this.cx = x;
     this.cy = y;
@@ -142,7 +146,8 @@ export class FrameBuilder {
     if (!this.started || this.rawMode) return;
     // 一筆書きで始点に戻って終わる図形（円など）は、消灯せずにそのまま次の周へつなぐ。
     // 実機のソフトでも閉じた図形はこうする。消すと毎周その場所が欠ける
-    if (this.paths === 1 && Math.hypot(this.fx - this.cx, this.fy - this.cy) < this.step * 0.5) {
+    // ドット1つだけ（長さのない図形）は、次のコマで別の場所へ動くことがあるので、毎回消してから移る
+    if (this.paths === 1 && this.litLen > this.step * 4 && Math.hypot(this.fx - this.cx, this.fy - this.cy) < this.step * 0.5) {
       this.frame.dropFront(this.after);
       return;
     }
