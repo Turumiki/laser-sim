@@ -103,29 +103,43 @@ export const SMOKE_GLSL = `
   float fbm(vec3 p) {
     return 0.5 * noise(p) + 0.25 * noise(p * 2.03 + 1.7) + 0.125 * noise(p * 4.1 + 9.2);
   }
-  // ヘイズの濃さ（平均1）。ヘイズマシンの細かい粒が部屋に満ちているので、基本はほぼ一様。
-  // そこに 大きくゆるいむら（数m〜十数m）・流れに沿って伸びた筋・細かいざらつき を重ねる。
+  // ヘイズの濃さ（平均1）。大きくゆるいむら・流れに沿った筋に加えて、
+  // 煙が渦を巻いてできる細い糸（光の膜の上では、渦巻く暗い筋に見える）を重ねる。
   // 空調や送風で横に流され、熱で上の方に少し溜まる。uTime は流れの速さを掛けた時間
   float smoke1(vec3 w) {
     vec3 flow = vec3(uTime * 0.25, uTime * 0.02, -uTime * 0.15);
     vec3 pl = (w + flow) * uGrain * 0.15;
-    // 筋は流れの向き（横）に長く、縦に詰める。形がゆっくり変わるよう、少しだけ歪ませる
     vec3 pm = (w + flow * 1.6) * uGrain * vec3(0.35, 1.2, 0.35);
-    vec3 pf = (w + flow * 2.5) * uGrain * 1.6 + 11.0;
-    float large, mid, fine;
+    vec3 pc = (w + flow * 1.4) * uGrain * 2.2;
+    float large, mid, c1, c2, wid;
     if (uProcedural > 0.5) {
       pm += 0.6 * (noise(pm * 0.35 + vec3(0.0, 0.0, uTime * 0.12)) - 0.5);
+      // 2回歪ませると、糸がくるくると巻き込む（歪み自体もゆっくり変わる）
+      pc += 2.6 * (vec3(noise(pc * 0.3 + vec3(0.0, 0.0, uTime * 0.25)), noise(pc * 0.3 + 5.2), noise(pc * 0.3 + 9.7)) - 0.5);
+      pc += 1.2 * (vec3(noise(pc * 0.7 + 3.3), noise(pc * 0.7 + 7.1), noise(pc * 0.7 + 1.9)) - 0.5);
       large = fbm(pl);
       mid = fbm(pm);
-      fine = noise(pf * 2.0);
+      c1 = fbm(pc);
+      c2 = fbm(pc * 2.1 + 4.0);
+      wid = noise(pc * 0.4 + 8.0);
     } else {
       pm += 0.6 * (tex(pm * 0.35 + vec3(0.0, 0.0, uTime * 0.12)) - 0.5);
+      pc += 2.6 * (vec3(tex(pc * 0.3 + vec3(0.0, 0.0, uTime * 0.25)), tex(pc * 0.3 + 5.2), tex(pc * 0.3 + 9.7)) - 0.5);
+      pc += 1.2 * (vec3(tex(pc * 0.7 + 3.3), tex(pc * 0.7 + 7.1), tex(pc * 0.7 + 1.9)) - 0.5);
       large = tex(pl);
       mid = tex(pm);
-      fine = tex(pf);
+      c1 = tex(pc);
+      c2 = tex(pc * 2.1 + 4.0);
+      wid = tex(pc * 0.4 + 8.0);
     }
     // ノイズの値は0.5のまわりに集まるので、振れ幅を大きめに取る
-    float d = 1.0 + 1.6 * (large - 0.5) + 2.4 * (mid - 0.5) + 1.4 * (fine - 0.5);
+    float d = 1.0 + 1.4 * (large - 0.5) + 1.6 * (mid - 0.5);
+    // ノイズがちょうど真ん中になる所を、煙の糸として取り出す（糸の所は煙が薄く、暗く見える）。
+    // 糸の太さは場所によって変える（太く柔らかい筋から細い筋まで）。細かい糸も少し重ねる
+    float w1 = mix(0.03, 0.16, smoothstep(0.35, 0.65, wid));
+    float t1 = smoothstep(0.0, w1, abs(c1 - 0.5));
+    float t2 = smoothstep(0.0, 0.05, abs(c2 - 0.5));
+    d *= mix(0.3, 1.1, t1) * mix(0.7, 1.04, t2);
     // 上の方ほど少し濃い（10m上で1割ほど）
     return max(0.0, d * (1.0 + 0.01 * w.y));
   }
