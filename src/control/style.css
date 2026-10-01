@@ -186,6 +186,8 @@ button, input, select { font: inherit; color: inherit; }
 .tabs { display: flex; gap: 1px; background: var(--line); border-bottom: 1px solid var(--line); }
 .tabs button { height: 22px; padding: 0 12px; border: 0; background: var(--bg2); color: var(--dim); font-size: 11px; }
 .tabs button.on { background: var(--bg1); color: var(--text); }
+/* シーケンス再生中の印 */
+.tabs button.live::after { content: ' ▶'; color: #6bb36b; }
 .pane { flex: 1; min-height: 0; overflow: auto; padding: 6px 8px; }
 .pane[hidden] { display: none; }
 #patterns h4 { margin: 0 0 4px; font-size: 11px; font-weight: 600; color: var(--dim); }
@@ -218,6 +220,7 @@ button, input, select { font: inherit; color: inherit; }
 }
 #status .ok { color: #6bb36b; }
 #status .ng { color: var(--rec); }
+#status .live { color: #6bb36b; cursor: pointer; }
 
 /* 細長いウィンドウ（Unityと並べるときやスマホ）は縦1列にして、ビューアを上に貼り付ける */
 @media (max-width: 900px) {

@@ -211,11 +211,26 @@ export function buildSequence(root: HTMLElement, store: Store, send: Send, serve
   }
   setInterval(tick, 100);
 
+  // 選んでいるショーに関係なく、このチャンネルで今流れているショー（タブの外に出す表示用）
+  function nowPlaying(): string | null {
+    if (!info?.state.playing) return null;
+    const id = info.state.id;
+    const show = id === 'custom' ? info.custom : BUILTIN_SHOWS.find(s => s.id === id);
+    if (!show?.steps.length) return null;
+    const total = showLength(show);
+    const t = (serverNow() - info.state.startedAt) / 1000;
+    const pos = locate(show, t);
+    const at = show.loop ? t % total : Math.min(t, total);
+    const p = pos ? show.steps[pos.index].values.pattern : undefined;
+    return `${show.name} ${pos ? pos.index + 1 : '-'}/${show.steps.length}${p ? ' ' + getPattern(p).name : ''} · ${fmt(at)}`;
+  }
+
   render();
   return {
     onShow(next: ShowInfo) {
       info = next;
       render();
     },
+    nowPlaying,
   };
 }

@@ -65,12 +65,22 @@ addEventListener('pagehide', save);
 
 const timer = new FrameTimer();
 const status = $('status');
+const seqTab = document.querySelector<HTMLButtonElement>('.tabs button[data-tab="sequence"]')!;
 setInterval(() => {
   const label = { connecting: '接続中…', open: '同期中', closed: '未接続' }[sync];
   const cls = sync === 'open' ? 'ok' : sync === 'closed' ? 'ng' : '';
   const item = (text: string, className = '') => Object.assign(document.createElement('span'), { className, textContent: text });
+  // シーケンスが流れているときは、どのタブを開いていても分かるようにする
+  const playing = sequence.nowPlaying();
+  seqTab.classList.toggle('live', !!playing);
+  const show = playing ? item(`▶ ${playing}`, 'live') : null;
+  if (show) {
+    show.title = 'シーケンスを再生中。クリックでシーケンスのタブを開く';
+    show.addEventListener('click', () => seqTab.click());
+  }
   status.replaceChildren(
     item(`● ${label}`, cls),
+    ...(show ? [show] : []),
     item(`ch: ${channel}`),
     item(`${timer.avg.toFixed(2)} ms`),
     item(`${engine.segments} seg`),
