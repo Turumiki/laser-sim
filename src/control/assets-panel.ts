@@ -106,7 +106,7 @@ function budget(data: AssetData, store: Store) {
   if (data.kind === 'ilda') {
     const max = Math.max(...data.frames.map(f => f.x.length));
     const hz = Math.round(s.pps / max), fps = Number(s.fps);
-    const warn = hz < fps ? `。1コマ（1/${fps}秒）に全体が入り切らないコマがある。ppsを上げると良くなる` : '';
+    const warn = hz < fps ? `。1コマ（1/${fps}秒）に全体が入り切らないコマがあります。ppsを上げると改善します` : '';
     return `${data.frames.length}コマ・最大${max}点（${s.pps / 1000}kppsで約${hz}回/秒${warn}）`;
   }
   const f = new Frame();
@@ -114,6 +114,6 @@ function budget(data: AssetData, store: Store) {
   const hz = Math.round(s.pps / Math.max(1, f.length));
   // 映像の1コマの間に全体を描き切れないと、コマごとに一部しか写らない
   const fps = Number(s.fps);
-  const warn = hz < fps ? `。1コマ（1/${fps}秒）に全体が入り切らず、一部ずつしか写らない。色数を減らすか、点間隔を広げるか、ppsを上げると良くなる` : '';
+  const warn = hz < fps ? `。1コマ（1/${fps}秒）に全体が入り切らず、一部ずつしか写りません。色数を減らす・点間隔を広げる・ppsを上げる、のどれかで改善します` : '';
   return `${data.paths.length}本・${f.length}点（${s.pps / 1000}kppsで約${hz}回/秒${warn}）`;
 }

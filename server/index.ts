@@ -237,10 +237,22 @@ server.on('upgrade', (req, socket, head) => {
   });
 });
 
+// すでに起動しているときなどは、英語の長いエラーではなく、何が起きたかだけを出す
+server.on('error', (e: NodeJS.ErrnoException) => {
+  if (e.code === 'EADDRINUSE') {
+    console.error(`ポート ${PORT} はほかで使われています。すでに起動している場合は、http://localhost:${PORT}/ を開けばそのまま使えます。`);
+    console.error('別のポートで起動する場合は、環境変数 PORT で指定してください（例: PORT=8766）。');
+  } else {
+    console.error(`起動できませんでした: ${e.message}`);
+  }
+  process.exit(1);
+});
+
 server.listen(PORT, () => {
   console.log(`ILDA Laser Sim ${DEV ? '(dev)' : ''}`);
   console.log(`  操作画面   http://localhost:${PORT}/`);
   console.log(`  OBS用出力  http://localhost:${PORT}/output.html`);
+  console.log(`  3Dビューア http://localhost:${PORT}/viewer.html`);
   for (const u of lanUrls()) console.log(`  LAN        ${u}/`);
 });
 

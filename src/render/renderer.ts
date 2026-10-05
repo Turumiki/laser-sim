@@ -125,7 +125,7 @@ export class LaserRenderer {
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     const gl = canvas.getContext('webgl2', { alpha: false, antialias: false, depth: false, stencil: false, preserveDrawingBuffer: false });
-    if (!gl) throw new Error('WebGL2が使えません（OBSならブラウザソースのハードウェアアクセラレーションを有効に）');
+    if (!gl) throw new Error('WebGL2が使えません。OBSの場合は、ブラウザソースのハードウェアアクセラレーションを有効にしてください');
     this.gl = gl;
     // OBSでソースを隠したときなどにコンテキストが失われることがある
     canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); this.res = null; });
