@@ -103,7 +103,7 @@ export const PARAMS: readonly ParamDef[] = [
     { value: 'source', label: '素材の色' },
   ] },
   { kind: 'color', key: 'color', label: '色', hint: '単色のときのレーザーの色', group: 'content' },
-  { kind: 'number', key: 'density', label: '点間隔', hint: '図形を点に分けるときの間隔。小さいほど点数が増え、フレームレート（pps ÷ 点数）が下がる', group: 'content', min: 0.004, max: 0.1, log: true, digits: 3 },
+  { kind: 'number', key: 'density', label: '点間隔', hint: '図形を点に分けるときの間隔。小さいほど点数が増え、1秒あたりの描き直し回数（pps ÷ 点数）が減る', group: 'content', min: 0.004, max: 0.1, log: true, digits: 3 },
   { kind: 'number', key: 'offX', label: '位置 X', hint: '投影位置。中央の正方形の半分を1とする', group: 'content', min: -1.78, max: 1.78, digits: 3 },
   { kind: 'number', key: 'offY', label: '位置 Y', hint: '投影位置。中央の正方形の半分を1とする', group: 'content', min: -1, max: 1, digits: 3 },
   { kind: 'number', key: 'size', label: 'サイズ', hint: '投影サイズ。1で中央の正方形いっぱい', group: 'content', min: 0.05, max: 1.5, digits: 2 },

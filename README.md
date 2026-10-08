@@ -24,7 +24,7 @@ ILDAレーザー風の映像を作るツール。OBSのブラウザソースで�
 | OBS用の出力 | `http://localhost:8765/output.html` |
 | 3Dビューア | `http://localhost:8765/viewer.html` |
 
-同じLAN内の別PCからも開ける（起動時にアドレスが出る）。読み込んだ素材や作ったショーはこのフォルダの中に保存され、Gitには入らない。
+同じLAN内の別PCからも開ける（起動時にアドレスが出る）。読み込んだ素材や作ったシーケンスはこのフォルダの中に保存され、Gitには入らない。
 
 ## OBS
 
@@ -59,14 +59,14 @@ ILDAレーザー風の映像を作るツール。OBSのブラウザソースで�
 curl -X POST http://localhost:8765/api/state -d '{"pattern":"star","rotSpeed":90}'
 ```
 
-ショー（シーケンス）の再生と停止:
+シーケンスの再生と停止（APIでは `show`）:
 
 ```sh
 curl -X POST http://localhost:8765/api/show -d '{"action":"play","id":"opening"}'
 curl -X POST http://localhost:8765/api/show -d '{"action":"stop"}'
 ```
 
-組み込みのショーは `opening`、`festival`、`beams`、`graphics`、`beat`（ビートで動くパターンだけのもの）、`vocal`（歌もののライブ向けに、イントロからアウトロまで通しで組んだもの）。操作画面で作ったものは `custom`。
+組み込みのシーケンスは `opening`、`festival`、`beams`、`graphics`、`beat`（ビートで動くパターンだけのもの）、`vocal`（歌もののライブ向けに、イントロからアウトロまで通しで組んだもの）。操作画面で作ったものは `custom`。
 
 複数のチャンネルを同じ瞬間に始める（`channels` を省くと全チャンネル）:
 
@@ -88,7 +88,7 @@ curl -X DELETE http://localhost:8765/api/assets/<id>
 /viewer.html?target=arena&count=6&spacing=6&layout=mirror&assign=arena-l,arena-l,arena-c,arena-c,arena-r,arena-r&view=foh
 ```
 
-VRのヘッドセット（PCにつないだもの、またはヘッドセットのブラウザ）があれば、右上の「VRで見る」から会場に入れる。WebXRは https でしか動かないので、別のPCから開くときは https で配信する（Tailscale なら `tailscale serve --bg 8765`）。VRの中ではコントローラのトリガーで視点を切り替える。描き方は点のデータだけで、ブルームは付かない。
+VRのヘッドセット（PCにつないだもの、またはヘッドセットのブラウザ）があれば、右上の「VRで見る」から会場に入れる。WebXRは https でしか動かないので、別のPCから開くときは https で配信する（Tailscale なら `tailscale serve --bg 8765`）。VRの中ではコントローラのトリガーで視点を切り替える。描き方は点データだけで、ブルームは付かない。
 
 チャンネルを分けるときは `?ch=名前`（操作画面、出力、APIで共通）。
 

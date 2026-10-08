@@ -79,11 +79,11 @@ const VIEWS: { id: View; label: string }[] = [
   { id: 'side', label: '横・俯瞰' },
   { id: 'stage', label: 'ステージ後方' },
 ];
-// 描き方。ベクター: 点のデータから直接ビームを出す（実機に近い） / 映像: Unityに渡すのと同じ映像をクッキーとして投影する
+// 描き方。ベクター: 点データから直接ビームを出す（実機に近い） / 映像: Unityに渡すのと同じ映像をクッキーとして投影する
 type RenderMode = 'vector' | 'video';
 const RENDER_MODES: { id: RenderMode; label: string }[] = [
-  { id: 'vector', label: '点のデータから直接' },
-  { id: 'video', label: 'クッキー（出力の映像）' },
+  { id: 'vector', label: '点データ' },
+  { id: 'video', label: 'クッキー' },
 ];
 
 // 設置場所（アリーナのとき）。現場でよく使う置き場所
@@ -493,7 +493,7 @@ renderer.setAnimationLoop(now => {
   beams.haze.uRoll.value.set(rig.roll, s0?.exposureShape === 'exp' ? 1 : 0);
   renderer.getDrawingBufferSize(beams.haze.uRes.value);
   surfaces.updateFacing(camera.getWorldPosition(eyePos));
-  // クッキーの描き方は画面ごとに前のコマを重ねる作りで、左右の目でずれるので、VRでは点のデータで描く
+  // クッキーの描き方は画面ごとに前のコマを重ねる作りで、左右の目でずれるので、VRでは点データで描く
   const video = vs.render === 'video' && !xr;
   beams.group.visible = !video;
   volume.enabled = video;
@@ -674,9 +674,9 @@ function buildRigPanel() {
 
   // --- 表示 ---
   const view = section('view', '表示');
-  seg(view, '描き方', '点のデータ: ビームを点のデータから直接出す（実機に近い）。クッキー: 出力と同じ映像（クッキー用）を、スポットライトのクッキーとして投影する（Unityなどで起きることの再現）',
-    RENDER_MODES.map(m => ({ id: m.id, label: m.id === 'vector' ? '点データ' : 'クッキー' })), vs.render, v => { vs.render = v; buildRigPanel(); });
-  seg(view, '画質', 'High: 高解像度・アンチエイリアス・細かいスモーク。Low: 解像度を下げ、ブルームなしで軽くする（スマホ向け）',
+  seg(view, '描き方', '点データ: ビームを点データから直接出す（実機に近い）。クッキー: 出力と同じ映像（クッキー用）を、スポットライトのクッキーとして投影する（Unityなどで起きることの再現）',
+    RENDER_MODES, vs.render, v => { vs.render = v; buildRigPanel(); });
+  seg(view, '画質', 'High: 高解像度・アンチエイリアス・細かいヘイズのむら。Low: 解像度を下げ、ブルームなしで軽くする（スマホ向け）',
     (Object.keys(QUALITY) as Quality[]).map(id => ({ id, label: QUALITY[id].label })), vs.quality, v => { vs.quality = v; buildComposer(); });
   const viewRow = select(view, '視点', '見る位置。ドラッグで動かしたあと「戻す」でこの位置に戻る', VIEWS, vs.view, v => { vs.view = v; placeCamera(); });
   const back = el('button', 'small', '戻す');
@@ -722,7 +722,7 @@ function buildRigPanel() {
   const look = section('look', '見え方');
   range(look, 'bloom', 'ブルーム', '明るい所のにじみ（カメラやレンズでの光のあふれ）', 0, 3, 0.05);
   check(look, 'eye', '目の感度', '人の目の色ごとの感度で見る。目は緑に敏感で、同じ出力でも赤や青は暗く見える（一般的なRGB機: 赤638nm・緑520nm・青450nm）', applyRig);
-  check(look, 'rolling', 'ローリング', 'スマホや一般的なビデオカメラで撮ったときの写り方。画面を上の行から順に時間をずらして撮るので、速く動くレーザーは曲がったり縞になったりして写る。スキャンのチャンネルを「点のデータ」で描いているときだけ効く', () => buildRigPanel());
+  check(look, 'rolling', 'ローリング', 'スマホや一般的なビデオカメラで撮ったときの写り方。画面を上の行から順に時間をずらして撮るので、速く動くレーザーは曲がったり縞になったりして写る。スキャンのチャンネルを「点データ」で描いているときだけ効く', () => buildRigPanel());
   if (vs.rolling) range(look, 'readout', '読み出し時間', '画面の上から下まで読み出すのにかかる時間。スマホでだいたい10〜30ms', 1, 40, 1, ' ms');
   if (vs.render === 'video') range(look, 'flat', '距離減衰の補正', 'クッキーの描き方で、遠くの減衰を弱める（1で距離に反比例）。Unityのライトの減衰カーブを平らにしたときの見え方', 0, 1, 0.05);
 

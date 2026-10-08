@@ -30,7 +30,7 @@ export function buildSequence(root: HTMLElement, store: Store, send: Send, serve
   const editable = () => selected === 'custom';
 
   // --- 1行目: 再生 ---
-  const pick = el('select', { class: 'tb', title: 'ショー' });
+  const pick = el('select', { class: 'tb', title: 'シーケンス' });
   for (const s of BUILTIN_SHOWS) pick.add(new Option(s.name, s.id));
   pick.add(new Option('カスタム', 'custom'));
   pick.addEventListener('change', () => {
@@ -50,7 +50,7 @@ export function buildSequence(root: HTMLElement, store: Store, send: Send, serve
   });
 
   const status = el('span', { class: 'seq-status' });
-  const exp = el('button', { class: 'tb', title: 'ショーの頭から終わりまでをMP4に書き出す（ループはしない）' }, '書き出し');
+  const exp = el('button', { class: 'tb', title: 'シーケンスの頭から終わりまでをMP4に書き出す（ループはしない）' }, '書き出し');
   attachExport(exp, () => {
     const show = current()!;
     return {
@@ -125,7 +125,7 @@ export function buildSequence(root: HTMLElement, store: Store, send: Send, serve
     saveLocal(SEQ_KEY, selected);
   });
   const builtinTools = el('div', { class: 'seq-row' },
-    el('span', { class: 'seq-note' }, '組み込みのショーはそのままでは編集できません。'), copy);
+    el('span', { class: 'seq-note' }, '組み込みのシーケンスはそのままでは編集できません。'), copy);
 
   const strip = el('div', { class: 'strip' });
   root.append(transport, customTools, builtinTools, strip);
