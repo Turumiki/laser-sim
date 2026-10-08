@@ -62,9 +62,9 @@ const assigned = () => {
 type Quality = 'high' | 'mid' | 'low';
 // thick: スモークの厚みを何か所で測るか（1: 3か所）、procedural: スモークをその場で計算するか
 const QUALITY: Record<Quality, { label: string; pixelRatio: () => number; samples: number; thick: number; procedural: number }> = {
-  high: { label: 'High', pixelRatio: () => Math.min(devicePixelRatio, 2), samples: 4, thick: 1, procedural: 1 },
-  mid: { label: 'Mid', pixelRatio: () => 1, samples: 0, thick: 0, procedural: 0 },
-  low: { label: 'Low', pixelRatio: () => 0.75, samples: 0, thick: 0, procedural: 0 },
+  high: { label: '高', pixelRatio: () => Math.min(devicePixelRatio, 2), samples: 4, thick: 1, procedural: 1 },
+  mid: { label: '中', pixelRatio: () => 1, samples: 0, thick: 0, procedural: 0 },
+  low: { label: '低', pixelRatio: () => 0.75, samples: 0, thick: 0, procedural: 0 },
 };
 
 // 複数台の並べ方。実際の現場でよくある置き方
@@ -351,7 +351,7 @@ const STEPS: Record<Quality, number> = { high: 40, mid: 24, low: 14 };
 const VOLUME_SCALE: Record<Quality, number> = { high: 0.5, mid: 0.35, low: 0.25 };
 let bloom: UnrealBloomPass;
 // 画質を変えたら、解像度とアンチエイリアスに合わせて作り直す
-// ブルームは画面全体を何段もぼかすので重い。Lowや強さ0のときは処理ごと止める
+// ブルームは画面全体を何段もぼかすので重い。画質「低」や強さ0のときは処理ごと止める
 const applyBloom = () => {
   bloom.strength = vs.bloom * BLOOM_SCALE;
   bloom.enabled = vs.bloom > 0 && vs.quality !== 'low';
@@ -676,7 +676,7 @@ function buildRigPanel() {
   const view = section('view', '表示');
   seg(view, '描き方', '点データ: ビームを点データから直接出す（実機に近い）。クッキー: 出力と同じ映像（クッキー用）を、スポットライトのクッキーとして投影する（Unityなどで起きることの再現）',
     RENDER_MODES, vs.render, v => { vs.render = v; buildRigPanel(); });
-  seg(view, '画質', 'High: 高解像度・アンチエイリアスあり・ヘイズのむらも細かく描く。Mid: 等倍の解像度で、アンチエイリアスなし。Low: 解像度を下げ、ブルームも切って軽くする（スマホ向け）',
+  seg(view, '画質', '高: 高解像度・アンチエイリアスあり・ヘイズのむらも細かく描く。中: 等倍の解像度で、アンチエイリアスなし。低: 解像度を下げ、ブルームも切って軽くする（スマホ向け）',
     (Object.keys(QUALITY) as Quality[]).map(id => ({ id, label: QUALITY[id].label })), vs.quality, v => { vs.quality = v; buildComposer(); });
   const viewRow = select(view, '視点', '見る位置。FOHは客席の中ほどにある音響・照明の卓の後ろ。ドラッグで動かしたあと「戻す」でこの位置に戻る', VIEWS, vs.view, v => { vs.view = v; placeCamera(); });
   const back = el('button', 'small', '戻す');

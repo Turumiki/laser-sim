@@ -122,7 +122,7 @@ export class VolumePass extends Pass {
     };
 
     this.volumeMat = new ShaderMaterial({
-      // スモークはHighでも作り置きの模様を使う（その場で計算すると、何十回も調べるこの処理では重すぎる）
+      // ヘイズのむらは画質「高」でも作り置きの模様を使う（その場で計算すると、何十回も調べるこの処理では重すぎる）
       uniforms: { ...haze, ...shared, uProcedural: { value: 0 }, uFrame: { value: 0 }, uSteps: { value: 24 }, uMaxT: { value: 60 }, uLod: { value: 1.5 }, uFlat: { value: 0 } },
       vertexShader: VERTEX,
       fragmentShader: SMOKE_GLSL + COMMON + `

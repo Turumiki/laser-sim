@@ -85,7 +85,7 @@ export const SMOKE_GLSL = `
   float tex(vec3 p) {
     return texture(uNoise, p * 0.125).r;
   }
-  // 1: その場でノイズを計算する（細かいが重い。画質High） / 0: 作っておいたノイズを読む（軽い）
+  // 1: その場でノイズを計算する（細かいが重い。画質「高」） / 0: 作っておいたノイズを読む（軽い）
   uniform float uProcedural;
   float hash(vec3 p) {
     p = fract(p * 0.3183099 + 0.1);
