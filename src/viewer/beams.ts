@@ -9,6 +9,8 @@ import { BeamGeometry, type Arrays, type BeamSource, type Projector, type Rig, t
 import type { Built, WorkerRequest, WorkerResult } from './beam-worker';
 import type { Surfaces } from './surfaces';
 import { smokeTexture } from './noise';
+import { FIELD_PERIOD, FIELD_VOXEL, SmokeField } from './smoke-field';
+import { HAZE_LAYER } from './haze-pass';
 
 export type { Projector, Rig } from './beam-geometry';
 
@@ -85,59 +87,37 @@ export const SMOKE_GLSL = `
   float tex(vec3 p) {
     return texture(uNoise, p * 0.125).r;
   }
-  // 1: その場でノイズを計算する（細かいが重い。画質「高」） / 0: 作っておいたノイズを読む（軽い）
-  uniform float uProcedural;
-  float hash(vec3 p) {
-    p = fract(p * 0.3183099 + 0.1);
-    p *= 17.0;
-    return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
-  }
-  float noise(vec3 x) {
-    vec3 i = floor(x), f = fract(x);
-    f = f * f * (3.0 - 2.0 * f);
-    return mix(
-      mix(mix(hash(i), hash(i + vec3(1, 0, 0)), f.x), mix(hash(i + vec3(0, 1, 0)), hash(i + vec3(1, 1, 0)), f.x), f.y),
-      mix(mix(hash(i + vec3(0, 0, 1)), hash(i + vec3(1, 0, 1)), f.x), mix(hash(i + vec3(0, 1, 1)), hash(i + vec3(1, 1, 1)), f.x), f.y),
-      f.z);
-  }
-  float fbm(vec3 p) {
-    return 0.5 * noise(p) + 0.25 * noise(p * 2.03 + 1.7) + 0.125 * noise(p * 4.1 + 9.2);
+  // 煙の糸の模様（smoke-field.ts で焼いたもの）。時刻の違う2枚をつないで、形をゆっくり変える
+  uniform highp sampler3D uField0;
+  uniform highp sampler3D uField1;
+  uniform float uFieldMix;
+  vec2 field(vec3 q, float lod) {
+    return mix(textureLod(uField0, q, lod).rg, textureLod(uField1, q, lod).rg, uFieldMix);
   }
   // ヘイズの濃さ（平均1）。大きくゆるいむら・流れに沿った筋に加えて、
   // 煙が渦を巻いてできる細い糸（光の膜の上では、渦巻く暗い筋に見える）を重ねる。
   // 空調や送風で横に流され、熱で上の方に少し溜まる。uTime は流れの速さを掛けた時間
-  float smoke1(vec3 w) {
+  // blur: どれだけの幅（m）でならして読むか。光の膜の厚みのぶん、模様はならされて見える
+  float smoke1(vec3 w, float blur) {
     vec3 flow = vec3(uTime * 0.25, uTime * 0.02, -uTime * 0.15);
     vec3 pl = (w + flow) * uGrain * 0.15;
     vec3 pm = (w + flow * 1.6) * uGrain * vec3(0.35, 1.2, 0.35);
-    vec3 pc = (w + flow * 1.4) * uGrain * 2.2;
-    float large, mid, c1, c2, wid;
-    if (uProcedural > 0.5) {
-      pm += 0.6 * (noise(pm * 0.35 + vec3(0.0, 0.0, uTime * 0.12)) - 0.5);
-      // 2回歪ませると、糸がくるくると巻き込む（歪み自体もゆっくり変わる）
-      pc += 2.6 * (vec3(noise(pc * 0.3 + vec3(0.0, 0.0, uTime * 0.25)), noise(pc * 0.3 + 5.2), noise(pc * 0.3 + 9.7)) - 0.5);
-      pc += 1.2 * (vec3(noise(pc * 0.7 + 3.3), noise(pc * 0.7 + 7.1), noise(pc * 0.7 + 1.9)) - 0.5);
-      large = fbm(pl);
-      mid = fbm(pm);
-      c1 = fbm(pc);
-      c2 = fbm(pc * 2.1 + 4.0);
-      wid = noise(pc * 0.4 + 8.0);
-    } else {
-      pm += 0.6 * (tex(pm * 0.35 + vec3(0.0, 0.0, uTime * 0.12)) - 0.5);
-      pc += 2.6 * (vec3(tex(pc * 0.3 + vec3(0.0, 0.0, uTime * 0.25)), tex(pc * 0.3 + 5.2), tex(pc * 0.3 + 9.7)) - 0.5);
-      pc += 1.2 * (vec3(tex(pc * 0.7 + 3.3), tex(pc * 0.7 + 7.1), tex(pc * 0.7 + 1.9)) - 0.5);
-      large = tex(pl);
-      mid = tex(pm);
-      c1 = tex(pc);
-      c2 = tex(pc * 2.1 + 4.0);
-      wid = tex(pc * 0.4 + 8.0);
-    }
+    pm += 0.6 * (tex(pm * 0.35 + vec3(0.0, 0.0, uTime * 0.12)) - 0.5);
+    float large = tex(pl);
+    float mid = tex(pm);
+    // 糸の模様は周期 ${FIELD_PERIOD} で焼いてあるので、その周期で割って読む。細かい糸は同じ模様を2倍の細かさで読む
+    vec3 q = (w + flow * 1.4) * uGrain * 2.2 / ${FIELD_PERIOD.toFixed(1)};
+    // ならす幅が焼いた模様の何マスぶんか。その分ぼかした段を読む。
+    // そのままでは遠くの膜で糸が消えて染みのようになるので、ぼかしは控えめにして2段までにする
+    float lod = clamp(log2(max(1.0, blur * uGrain * 2.2 / ${FIELD_VOXEL.toFixed(6)})) - 2.0, 0.0, 2.0);
+    vec2 f = field(q, lod);
+    float c2 = field(q * 2.0 + 0.37, lod + 1.0).r;
     // ノイズの値は0.5のまわりに集まるので、振れ幅を大きめに取る
     float d = 1.0 + 1.4 * (large - 0.5) + 1.6 * (mid - 0.5);
     // ノイズがちょうど真ん中になる所を、煙の糸として取り出す（糸の所は煙が薄く、暗く見える）。
     // 糸の太さは場所によって変える（太く柔らかい筋から細い筋まで）。細かい糸も少し重ねる
-    float w1 = mix(0.03, 0.16, smoothstep(0.35, 0.65, wid));
-    float t1 = smoothstep(0.0, w1, abs(c1 - 0.5));
+    float w1 = mix(0.03, 0.16, smoothstep(0.35, 0.65, f.g));
+    float t1 = smoothstep(0.0, w1, abs(f.r - 0.5));
     float t2 = smoothstep(0.0, 0.05, abs(c2 - 0.5));
     d *= mix(0.3, 1.1, t1) * mix(0.7, 1.04, t2);
     // 上の方ほど少し濃い（10m上で1割ほど）
@@ -147,10 +127,8 @@ export const SMOKE_GLSL = `
   // w: 空間での位置、r: 光源からの距離
   float smoke(vec3 w, vec3 viewDir, float r) {
     float thick = 0.03 + 0.05 * r;
-    float d = uThick > 0.5
-      ? (smoke1(w - viewDir * thick) + smoke1(w) + smoke1(w + viewDir * thick)) / 3.0
-      : smoke1(w);
-    return mix(1.0, d, uSmoke);
+    // 厚みの中を何か所も測る代わりに、厚みのぶんぼかした模様を1回読む
+    return mix(1.0, smoke1(w, uThick > 0.5 ? thick : 0.0), uSmoke);
   }
 `;
 
@@ -162,7 +140,9 @@ export interface HazeUniforms {
   uExt: { value: number };
   uThick: { value: number };
   uNoise: { value: Data3DTexture };
-  uProcedural: { value: number };
+  uField0: { value: Data3DTexture | null };
+  uField1: { value: Data3DTexture | null };
+  uFieldMix: { value: number };
   // ローリングシャッター: x = 読み出し時間（露光時間を1とする。0で無効）, y = 1 なら残像（指数）
   uRoll: { value: Vector2 };
   // 描画先の大きさ（px）。どの行を撮っているかを出すのに使う
@@ -205,18 +185,23 @@ const beamVertex = `
   }`;
 
 // 光の膜は、斜めから見るほどヘイズの中を長く通して見るので明るく見える（円錐の縁が明るいのはこのため）
+// 普段は粗いバッファに描く（haze-pass.ts）。そのときは奥行きを自分で比べて、壁や物の奥を描かない
 const sheetMaterial = (uniforms: HazeUniforms) => new ShaderMaterial({
   ...additive,
   side: DoubleSide,
-  uniforms: { ...uniforms },
+  uniforms: { ...uniforms, tDepth: { value: null }, uManualDepth: { value: 0 }, uHazeRes: { value: new Vector2(1, 1) } },
   vertexShader: beamVertex,
   fragmentShader: SMOKE_GLSL + SHUTTER_GLSL + `
+    uniform sampler2D tDepth;
+    uniform float uManualDepth;
+    uniform vec2 uHazeRes;
     varying vec3 vColor;
     varying vec3 vView;
     varying vec3 vWorld;
     varying vec3 vRel;
     varying vec3 vEye;
     void main() {
+      if (uManualDepth > 0.5 && gl_FragCoord.z > texture(tDepth, gl_FragCoord.xy / uHazeRes).r) discard;
       vec3 n = normalize(cross(dFdx(vView), dFdy(vView)));
       float c = abs(dot(n, normalize(-vView)));
       vec3 viewDir = normalize(vEye);
@@ -273,7 +258,10 @@ export class Beams {
   private projectors: readonly Projector[] = [{ pos: [0, 0, 0], yaw: 0, mirror: false }];
   private rig: Rig;
   private surfaces: Surfaces;
-  readonly haze: HazeUniforms = { uTime: { value: 0 }, uSmoke: { value: 0.6 }, uGrain: { value: 0.6 }, uExt: { value: 0.015 }, uThick: { value: 1 }, uNoise: { value: smokeTexture() }, uProcedural: { value: 0 }, uRoll: { value: new Vector2() }, uRes: { value: new Vector2(1, 1) } };
+  // 煙の糸の模様。毎フレーム update() で少しずつ焼き進める
+  readonly field = new SmokeField();
+  readonly sheetMesh: Mesh;
+  readonly haze: HazeUniforms = { uTime: { value: 0 }, uSmoke: { value: 0.6 }, uGrain: { value: 0.6 }, uExt: { value: 0.015 }, uThick: { value: 1 }, uNoise: { value: smokeTexture() }, ...this.field.uniforms, uRoll: { value: new Vector2() }, uRes: { value: new Vector2(1, 1) } };
 
   private worker: Worker | null = null;
   // Worker が計算中（結果を待っている間は次を頼まない）
@@ -291,8 +279,11 @@ export class Beams {
   constructor(rig: Rig, surfaces: Surfaces) {
     this.rig = rig;
     this.surfaces = surfaces;
+    // 光の膜は、粗いバッファに分けて描くため専用の層に置く（VRでは普段の描画に含める）
+    this.sheetMesh = new Mesh(this.sheets.geo, sheetMaterial(this.haze));
+    this.sheetMesh.layers.set(HAZE_LAYER);
     this.group.add(
-      new Mesh(this.sheets.geo, sheetMaterial(this.haze)),
+      this.sheetMesh,
       new LineSegments(this.rays.geo, rayMaterial(this.haze)),
       new LineSegments(this.wall.geo, spotMaterial(this.haze)),
     );

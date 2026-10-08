@@ -1,11 +1,10 @@
 import {
-  ACESFilmicToneMapping, BoxGeometry, Color, DepthTexture, DirectionalLight, GridHelper, Group, HalfFloatType, HemisphereLight, Mesh, MeshBasicMaterial, PerspectiveCamera,
+  ACESFilmicToneMapping, BoxGeometry, Color, DirectionalLight, GridHelper, Group, HalfFloatType, HemisphereLight, Mesh, MeshBasicMaterial, PerspectiveCamera,
   Scene, Vector2, Vector3, WebGLRenderer, WebGLRenderTarget,
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { DEFAULTS, sanitize } from '../core/params';
 import { loadLocal, saveLocal } from '../core/persist';
@@ -15,6 +14,8 @@ import { connectSync } from '../sync/client';
 import { fastTooltips } from '../control/tooltip';
 import { Cookies } from './cookies';
 import { VolumePass, type VolumeProjector } from './volume';
+import { HAZE_LAYER, HazePass } from './haze-pass';
+import { ScenePass } from './scene-pass';
 import { EYE_GAIN } from '../core/color';
 import { Beams, type Projector, type Rig, type Source } from './beams';
 import { ROOMS, setEdgeLevel, Surfaces, TARGETS, type TargetKind } from './surfaces';
@@ -60,11 +61,11 @@ const assigned = () => {
 
 // ビューア独自の設定（同期しない）
 type Quality = 'high' | 'mid' | 'low';
-// thick: スモークの厚みを何か所で測るか（1: 3か所）、procedural: スモークをその場で計算するか
-const QUALITY: Record<Quality, { label: string; pixelRatio: () => number; samples: number; thick: number; procedural: number }> = {
-  high: { label: '高', pixelRatio: () => Math.min(devicePixelRatio, 2), samples: 4, thick: 1, procedural: 1 },
-  mid: { label: '中', pixelRatio: () => 1, samples: 0, thick: 0, procedural: 0 },
-  low: { label: '低', pixelRatio: () => 0.75, samples: 0, thick: 0, procedural: 0 },
+// thick: ヘイズの膜の厚みを何か所で測るか（1: 3か所）
+const QUALITY: Record<Quality, { label: string; pixelRatio: () => number; samples: number; thick: number }> = {
+  high: { label: '高', pixelRatio: () => Math.min(devicePixelRatio, 2), samples: 4, thick: 1 },
+  mid: { label: '中', pixelRatio: () => 1, samples: 0, thick: 0 },
+  low: { label: '低', pixelRatio: () => 0.75, samples: 0, thick: 0 },
 };
 
 // 複数台の並べ方。実際の現場でよくある置き方
@@ -364,22 +365,30 @@ const buildComposer = () => {
     composer.dispose();
   }
   renderer.setPixelRatio(q.pixelRatio());
-  const target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: q.samples });
-  // 映像の描き方で、光を壁や物の手前で止めるのに奥行きを使う
-  target.depthTexture = new DepthTexture(1, 1);
-  composer = new EffectComposer(renderer, target);
-  composer.addPass(new RenderPass(scene, camera));
+  // アンチエイリアスは最初の描画（ScenePass）だけ。後の処理は普通のバッファで行う
+  composer = new EffectComposer(renderer, new WebGLRenderTarget(1, 1, { type: HalfFloatType }));
+  const scenePass = new ScenePass(scene, camera, q.samples);
+  composer.addPass(scenePass);
+  const depth = () => scenePass.depth;
+  // 光の膜は、高精細な画面では見た目の解像度（CSSのピクセル）で描いて足す
+  const fine = Math.max(1, q.pixelRatio());
+  const haze = new HazePass(beams.sheetMesh, camera, beams.haze, depth);
+  haze.scale = 1 / fine;
+  composer.addPass(haze);
   volume = new VolumePass(camera, beams.haze);
+  volume.depth = depth;
   volume.scale = VOLUME_SCALE[vs.quality] ?? 0.35;
   composer.addPass(volume);
   cookies.size = vs.quality === 'low' ? 256 : 512;
   // しきい値を高めにして、ビームの芯のように明るい所だけをにじませる（ヘイズ全体がかすまないように）
   bloom = new UnrealBloomPass(new Vector2(1, 1), vs.bloom * BLOOM_SCALE, 0.35, 0.6);
+  // にじみは細かさが要らないので、高精細な画面でも見た目の解像度で計算する
+  const bloomSize = bloom.setSize.bind(bloom);
+  bloom.setSize = (w: number, h: number) => bloomSize(Math.round(w / fine), Math.round(h / fine));
   composer.addPass(bloom);
   applyBloom();
   composer.addPass(new OutputPass());
   beams.haze.uThick.value = q.thick;
-  beams.haze.uProcedural.value = q.procedural;
   resize();
 };
 
@@ -448,7 +457,7 @@ buildRigPanel();
 fastTooltips();
 // 開発中だけ、ブラウザのコンソールから中身を見られるようにする
 preventDoubleTapZoom();
-if (import.meta.env.DEV) Object.assign(window, { laser3d: { renderer, feeds, beams, camera, controls } });
+if (import.meta.env.DEV) Object.assign(window, { laser3d: { renderer, feeds, beams, camera, controls, get composer() { return composer; } } });
 
 // ?stats=1 で、fps と1フレームの処理時間（CPU側）を出す
 const stats = params.get('stats') === '1' ? document.body.appendChild(document.createElement('div')) : null;
@@ -512,9 +521,13 @@ renderer.setAnimationLoop(now => {
   // 流れの速さを変えても形が飛ばないよう、時間を積み上げる
   hazeTime += dt * vs.flow;
   beams.haze.uTime.value = hazeTime;
+  // 煙の糸の模様を、時間に合わせて少しずつ焼き進める
+  beams.field.update(renderer, hazeTime);
   if (xr) {
-    // ブルームなどの後処理は左右2枚の描画に使えないので、そのまま描く
+    // ブルームなどの後処理は左右2枚の描画に使えないので、そのまま描く（光の膜も一緒に）
+    camera.layers.enable(HAZE_LAYER);
     renderer.render(scene, camera);
+    camera.layers.disable(HAZE_LAYER);
   } else {
     controls.update();
     composer.render();

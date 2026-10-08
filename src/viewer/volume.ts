@@ -81,6 +81,8 @@ const COMMON = `
 // 映像（クッキー）を投影するスポットライトを、ヘイズの中で積算して描く（Unityのボリュメトリックライトと同じ考え方）。
 // 重い計算なので、空間の光は低い解像度で出して引き伸ばし、壁に映る絵だけ元の解像度で足す
 export class VolumePass extends Pass {
+  // 会場の奥行き。指定がなければ、前の段のバッファの奥行きを使う
+  depth: (() => Texture | null) | null = null;
   private volumeQuad: FullScreenQuad;
   private compositeQuad: FullScreenQuad;
   private volumeMat: ShaderMaterial;
@@ -122,8 +124,8 @@ export class VolumePass extends Pass {
     };
 
     this.volumeMat = new ShaderMaterial({
-      // ヘイズのむらは画質「高」でも作り置きの模様を使う（その場で計算すると、何十回も調べるこの処理では重すぎる）
-      uniforms: { ...haze, ...shared, uProcedural: { value: 0 }, uFrame: { value: 0 }, uSteps: { value: 24 }, uMaxT: { value: 60 }, uLod: { value: 1.5 }, uFlat: { value: 0 } },
+      // ヘイズのむらは、作り置きのノイズと焼いておいた糸の模様を読むだけにする（1画素で何十回も調べるので）
+      uniforms: { ...haze, ...shared, uFrame: { value: 0 }, uSteps: { value: 24 }, uMaxT: { value: 60 }, uLod: { value: 1.5 }, uFlat: { value: 0 } },
       vertexShader: VERTEX,
       fragmentShader: SMOKE_GLSL + COMMON + `
         uniform float uSteps;
@@ -176,7 +178,7 @@ export class VolumePass extends Pass {
               uv.x *= uMirror[j];
               vec3 rel = a + dir * t;
               vec3 p = uCam + dir * t;
-              float dens = mix(1.0, smoke1(p), uSmoke);
+              float dens = mix(1.0, smoke1(p, 0.0), uSmoke);
               // スポットライトは距離の2乗で弱まる。細い線を取りこぼさないよう、少しぼかした段を読む。
               // uFlat を上げると遠くの減衰を弱める（1で距離に反比例。4mの所は変わらない）
               float r2 = max(dot(rel, rel), 0.25);
@@ -291,7 +293,7 @@ export class VolumePass extends Pass {
 
   render(renderer: WebGLRenderer, writeBuffer: WebGLRenderTarget, readBuffer: WebGLRenderTarget) {
     const u = this.volumeMat.uniforms;
-    u.tDepth.value = readBuffer.depthTexture;
+    u.tDepth.value = this.depth?.() ?? readBuffer.depthTexture;
     u.uInvProj.value.copy(this.camera.projectionMatrixInverse);
     u.uInvView.value.copy(this.camera.matrixWorld);
     u.uCam.value.setFromMatrixPosition(this.camera.matrixWorld);
