@@ -75,8 +75,8 @@ type View = 'audience' | 'foh' | 'side' | 'stage';
 const VIEWS: { id: View; label: string }[] = [
   { id: 'audience', label: '客席' },
   // 照明やレーザーのオペレーターがいる卓（客席の中央、後ろ寄り）
-  { id: 'foh', label: 'FOH' },
-  { id: 'side', label: '横・俯瞰' },
+  { id: 'foh', label: 'FOH（卓）' },
+  { id: 'side', label: '俯瞰' },
   { id: 'stage', label: 'ステージ後方' },
 ];
 // 描き方。ベクター: 点データから直接ビームを出す（実機に近い） / 映像: Unityに渡すのと同じ映像をクッキーとして投影する
@@ -676,9 +676,9 @@ function buildRigPanel() {
   const view = section('view', '表示');
   seg(view, '描き方', '点データ: ビームを点データから直接出す（実機に近い）。クッキー: 出力と同じ映像（クッキー用）を、スポットライトのクッキーとして投影する（Unityなどで起きることの再現）',
     RENDER_MODES, vs.render, v => { vs.render = v; buildRigPanel(); });
-  seg(view, '画質', 'High: 高解像度・アンチエイリアス・細かいヘイズのむら。Low: 解像度を下げ、ブルームなしで軽くする（スマホ向け）',
+  seg(view, '画質', 'High: 高解像度・アンチエイリアスあり・ヘイズのむらも細かく描く。Mid: 等倍の解像度で、アンチエイリアスなし。Low: 解像度を下げ、ブルームも切って軽くする（スマホ向け）',
     (Object.keys(QUALITY) as Quality[]).map(id => ({ id, label: QUALITY[id].label })), vs.quality, v => { vs.quality = v; buildComposer(); });
-  const viewRow = select(view, '視点', '見る位置。ドラッグで動かしたあと「戻す」でこの位置に戻る', VIEWS, vs.view, v => { vs.view = v; placeCamera(); });
+  const viewRow = select(view, '視点', '見る位置。FOHは客席の中ほどにある音響・照明の卓の後ろ。ドラッグで動かしたあと「戻す」でこの位置に戻る', VIEWS, vs.view, v => { vs.view = v; placeCamera(); });
   const back = el('button', 'small', '戻す');
   back.addEventListener('click', () => placeCamera());
   viewRow.append(back);
@@ -696,23 +696,23 @@ function buildRigPanel() {
     placeCamera();
     buildRigPanel();
   });
-  range(venue, 'distance', ROOMS[vs.target] ? '奥行き' : '壁までの距離', 'プロジェクターから奥の壁までの距離', 2, 150, 0.5, ' m');
+  range(venue, 'distance', ROOMS[vs.target] ? '奥行き' : '壁までの距離', 'レーザー機から奥の壁までの距離', 2, 150, 0.5, ' m');
   range(venue, 'work', '作業灯', '会場の形を見るための明かり。0で本番のような真っ暗', 0, 1, 0.05);
 
   // --- レーザー機 ---
   const rigBox = section('rig', 'レーザー機');
-  range(rigBox, 'count', '台数', 'プロジェクターの台数', 1, 8, 1, ' 台');
+  range(rigBox, 'count', '台数', 'レーザー機の台数', 1, 8, 1, ' 台');
   range(rigBox, 'spacing', '間隔', '隣の台との間隔', 0.5, 10, 0.5, ' m');
-  select(rigBox, '並べ方', '複数台の並べ方。扇: 外側ほど外へ向ける / 左右対称: 右半分を左右反転', LAYOUTS, vs.layout, v => { vs.layout = v; placeProjectors(); });
+  select(rigBox, '並べ方', '複数台の並べ方。平行: すべて同じ向き / 扇: 外側の台ほど外へ向ける / 左右対称: 右半分を左右反転', LAYOUTS, vs.layout, v => { vs.layout = v; placeProjectors(); });
   if (vs.target === 'arena') {
-    select(rigBox, '設置場所', 'レーザーの置き場所。ステージ前の床・照明トラス・左右のタワー・センターステージ', PLACES, vs.place, v => { vs.place = v; placeProjectors(); });
+    select(rigBox, '設置場所', 'レーザー機の置き場所。標準は床から5mの高さ。ほかに、ステージ前の床・ステージ上のトラス・上手と下手のタワー・センターステージ', PLACES, vs.place, v => { vs.place = v; placeProjectors(); });
   }
   rigBox.append(assignBox);
   renderAssign();
 
   // --- ヘイズ ---
   const haze = section('haze', 'ヘイズ');
-  range(haze, 'haze', '濃さ', 'ヘイズの濃さ（ビームの明るさ）', 0.1, 5, 0.05);
+  range(haze, 'haze', '濃さ', 'ヘイズの濃さ。濃いほどビームが明るく見える', 0.1, 5, 0.05);
   range(haze, 'smoke', 'むら', '濃さのむらの強さ。0で一様', 0, 1, 0.05);
   range(haze, 'grain', 'むらの細かさ', 'むらの模様の細かさ', 0.2, 2, 0.05);
   range(haze, 'flow', '流れ', '空調や送風で流れる速さ。0で止まる', 0, 3, 0.1);

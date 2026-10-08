@@ -80,7 +80,7 @@ export function buildSequence(root: HTMLElement, store: Store, send: Send, serve
     if (show && editable()) saveCustom({ ...show, loop: loop.checked });
   });
 
-  const add = el('button', { class: 'tb', title: '今の絵柄を、選んだステップの後ろ（選んでいなければ最後）に追加する' }, '＋ 今の設定を追加');
+  const add = el('button', { class: 'tb', title: '今の設定（絵柄とレーザー機）を、選んだステップの後ろ（選んでいなければ最後）に追加する' }, '＋ 今の設定を追加');
   add.addEventListener('click', () => {
     const show = current() ?? { id: 'custom', name: 'カスタム', bpm: 128, loop: true, steps: [] };
     const steps = [...show.steps];

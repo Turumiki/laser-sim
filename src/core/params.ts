@@ -96,7 +96,7 @@ export const OUTPUT_SIZES: Record<string, readonly [number, number]> = {
 };
 
 export const PARAMS: readonly ParamDef[] = [
-  { kind: 'enum', key: 'colorMode', label: 'カラー', hint: '点の色の付け方。レインボーは経路に沿って色相が変わる。素材の色は、読み込んだ画像やILDAファイルの色をそのまま使う（それ以外のパターンでは単色）', group: 'content', options: [
+  { kind: 'enum', key: 'colorMode', label: '色の付け方', hint: '単色: 「色」で選んだ1色。レインボー: 線に沿って色が変わる。サイクル: 全体の色が時間とともに移り変わる。素材の色: 読み込んだ画像やILDAファイルの色をそのまま使う（それ以外のパターンでは単色）', group: 'content', options: [
     { value: 'single', label: '単色' },
     { value: 'rainbow', label: 'レインボー' },
     { value: 'cycle', label: 'サイクル' },
@@ -107,12 +107,12 @@ export const PARAMS: readonly ParamDef[] = [
   { kind: 'number', key: 'offX', label: '位置 X', hint: '投影位置。中央の正方形の半分を1とする', group: 'content', min: -1.78, max: 1.78, digits: 3 },
   { kind: 'number', key: 'offY', label: '位置 Y', hint: '投影位置。中央の正方形の半分を1とする', group: 'content', min: -1, max: 1, digits: 3 },
   { kind: 'number', key: 'size', label: 'サイズ', hint: '投影サイズ。1で中央の正方形いっぱい', group: 'content', min: 0.05, max: 1.5, digits: 2 },
-  { kind: 'number', key: 'angle', label: '角度', hint: '回転角', group: 'content', min: 0, max: 360, digits: 0, unit: '°' },
+  { kind: 'number', key: 'angle', label: '角度', hint: '図形の傾き', group: 'content', min: 0, max: 360, digits: 0, unit: '°' },
   { kind: 'number', key: 'rotSpeed', label: '回転', hint: '1秒あたりの回転量', group: 'content', min: -360, max: 360, digits: 0, unit: '°/s' },
   { kind: 'number', key: 'animSpeed', label: 'アニメ速度', hint: 'パターンの動きの速さ。0で静止', group: 'content', min: 0, max: 4, digits: 2 },
-  { kind: 'number', key: 'bpm', label: 'BPM', hint: 'ビートに合わせて動くパターン（ストロボ・チェイス・ビームウェーブなど）のテンポ。シーケンスを流すと、ショーのBPMになる。アニメ速度を2にすると倍の速さ', group: 'content', min: 40, max: 240, digits: 0 },
+  { kind: 'number', key: 'bpm', label: 'BPM', hint: 'ビートに合わせて動くパターン（ストロボ・チェイス・ビームウェーブなど）のテンポ。シーケンスを流すと、シーケンスのBPMになる。アニメ速度を2にすると倍の速さ', group: 'content', min: 40, max: 240, digits: 0 },
 
-  { kind: 'enum', key: 'mode', label: '描画方式', hint: 'ベクター: ILDAデータの図形をそのまま描く。スキャン: pps、スキャナ性能、減衰、カラーシフトを反映して実機の見え方を再現する', group: 'projector', options: [
+  { kind: 'enum', key: 'mode', label: '描画方式', hint: 'ベクター: 図形をそのまま、きれいな線で描く。スキャン: pps・スキャナ性能・ダンピング・カラーシフトを反映して、実機の見え方を再現する', group: 'projector', options: [
     { value: 'clean', label: 'ベクター' },
     { value: 'scan', label: 'スキャン' },
   ] },
@@ -120,16 +120,16 @@ export const PARAMS: readonly ParamDef[] = [
   { kind: 'number', key: 'scannerK', label: 'スキャナ性能', hint: 'ILDAテストパターンを正しく描ける pps（走査角8°）。低いほど角が丸くなり、円が小さくなる', group: 'projector', min: 5, max: 80, digits: 0, unit: 'kpps' },
   { kind: 'number', key: 'damping', label: 'ダンピング', hint: 'ミラーの揺れを抑える強さ。小さいと角で行き過ぎて揺れ（オーバーシュート）、大きいと角が丸くなる', group: 'projector', min: 0.2, max: 1.5, digits: 2 },
   { kind: 'number', key: 'colorShift', label: 'カラーシフト', hint: '色（点灯・消灯を含む）を座標に対して遅らせる時間。ミラーの遅れに合わせる補正。合っていないと角や線の端で色がはみ出す', group: 'projector', min: -200, max: 500, digits: 0, unit: 'µs' },
-  { kind: 'number', key: 'scanAngle', label: '最大走査角', hint: 'プロジェクターが振れる最大の角度（光学角）。映像の正方形の幅がこの角度になる。Unityのスポットライトの角度はこれに合わせる。大きいほどミラーを大きく振るので、同じサイズでも図形が崩れやすい', group: 'projector', min: 5, max: 90, digits: 0, unit: '°' },
+  { kind: 'number', key: 'scanAngle', label: '最大走査角', hint: 'レーザー機が振れる最大の角度（光学角）。映像の正方形の幅がこの角度になる。Unityのスポットライトの角度はこれに合わせる。大きいほどミラーを大きく振るので、同じサイズでも図形が崩れやすい', group: 'projector', min: 5, max: 90, digits: 0, unit: '°' },
   { kind: 'bool', key: 'pincushion', label: '糸巻きゆがみ', hint: 'X用とY用の2枚のミラーで振るため、平面に映すと四隅が外へ引っぱられた形（糸巻き型）になる。走査角が大きいほど目立つ', group: 'projector' },
-  { kind: 'number', key: 'beam', label: 'ビーム径', hint: 'ビームの太さ。FHD換算のpx', group: 'projector', min: 0.5, max: 10, digits: 1, unit: 'px' },
+  { kind: 'number', key: 'beam', label: 'ビーム径', hint: 'ビームの太さ。1920×1080の画面に換算したピクセル数', group: 'projector', min: 0.5, max: 10, digits: 1, unit: 'px' },
 
   { kind: 'enum', key: 'exposureShape', label: '露光方式', hint: 'シャッター: 露光時間内の光を均等に積算する（カメラ）。残像: 古い光ほど暗くなる（目）', group: 'camera', options: [
     { value: 'box', label: 'シャッター' },
     { value: 'exp', label: '残像' },
   ] },
   { kind: 'bool', key: 'exposureSync', label: '1コマに合わせる', hint: '露光時間を映像の1コマ（1 ÷ 映像のfps）にする。コマの間に写らない時間ができない。映像のfpsは「出力」で設定', group: 'camera' },
-  { kind: 'number', key: 'exposure', label: '露光時間', hint: '光を積算する時間。16.7ms（1/60秒）で1コマ分', group: 'camera', inactive: s => s.exposureSync, min: 0.2, max: 200, log: true, digits: 1, unit: 'ms' },
+  { kind: 'number', key: 'exposure', label: '露光時間', hint: '光を積算する時間。60fpsなら16.7ms（1/60秒）で1コマ分', group: 'camera', inactive: s => s.exposureSync, min: 0.2, max: 200, log: true, digits: 1, unit: 'ms' },
   { kind: 'number', key: 'glow', label: 'グロー', hint: 'ビーム周辺のにじみ。ヘイズやレンズでの散乱に相当。クッキー用では使わない', group: 'camera', inactive: s => s.look === 'source', min: 0, max: 3, digits: 2 },
   { kind: 'number', key: 'bright', label: '明るさ', hint: '露光量。上げると強く当たった部分が白く飛ぶ', group: 'camera', min: 0.1, max: 5, log: true, digits: 2 },
 
