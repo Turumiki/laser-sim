@@ -36,7 +36,7 @@ export class Recorder {
     const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 40e6 });
     rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
     rec.onstop = () => {
-      stream.getTracks().forEach(t => t.stop());
+      for (const t of stream.getTracks()) t.stop();
       download(new Blob(chunks, { type: mime.split(';')[0] }), `${name}_${stamp()}.${mime.includes('mp4') ? 'mp4' : 'webm'}`);
       this.rec = null;
       this.onChange?.();

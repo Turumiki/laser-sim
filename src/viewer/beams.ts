@@ -39,7 +39,7 @@ class GpuBuffer {
       new BufferAttribute(new Float32Array(v * 3), 3),
       new BufferAttribute(new Float32Array(v), 1),
     ];
-    ['position', 'color', 'aOrigin', 'aAge'].forEach((name, i) => this.geo.setAttribute(name, this.attrs[i]));
+    ['position', 'color', 'aOrigin', 'aAge'].forEach((name, i) => { this.geo.setAttribute(name, this.attrs[i]); });
   }
 
   // 使った分だけ写して、その分だけGPUに送る（バッファ全体を毎フレーム送ると重い）

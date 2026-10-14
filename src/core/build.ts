@@ -1,4 +1,4 @@
-import { Frame, FrameBuilder } from './frame.ts';
+import { type Frame, FrameBuilder } from './frame.ts';
 import type { Settings } from './params.ts';
 import { getPattern } from './patterns/index.ts';
 import { hexToRgb, hsv } from './color.ts';

@@ -97,4 +97,8 @@ VRのヘッドセット（PCにつないだもの、またはヘッドセット�
 ```sh
 npm run dev        # 保存するとブラウザに反映される
 npm run typecheck
+npm run lint
+npm test
 ```
+
+開発サーバーを `.local` 以外のホスト名で開くときは、`.env.local` に `DEV_ALLOWED_HOSTS=.example.net` のようにカンマ区切りで書く。
