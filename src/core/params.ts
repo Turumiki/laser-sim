@@ -88,6 +88,9 @@ export interface ColorParam extends ParamBase { kind: 'color'; key: KeysOf<strin
 
 export type ParamDef = NumberParam | EnumParam | BoolParam | ColorParam;
 
+// シーケンスのBPMもこの範囲（ショーを流すと、パターンのBPMがシーケンスのBPMになるので揃える）
+export const BPM_RANGE = { min: 20, max: 300 } as const;
+
 export const OUTPUT_SIZES: Record<string, readonly [number, number]> = {
   '1920x1080': [1920, 1080],
   '1080x1080': [1080, 1080],
@@ -110,7 +113,7 @@ export const PARAMS: readonly ParamDef[] = [
   { kind: 'number', key: 'angle', label: '角度', hint: '図形の傾き', group: 'content', min: 0, max: 360, digits: 0, unit: '°' },
   { kind: 'number', key: 'rotSpeed', label: '回転', hint: '1秒あたりの回転量', group: 'content', min: -360, max: 360, digits: 0, unit: '°/s' },
   { kind: 'number', key: 'animSpeed', label: 'アニメ速度', hint: 'パターンの動きの速さ。0で静止', group: 'content', min: 0, max: 4, digits: 2 },
-  { kind: 'number', key: 'bpm', label: 'BPM', hint: 'ビートに合わせて動くパターン（ストロボ・チェイス・ビームウェーブなど）のテンポ。シーケンスを流すと、シーケンスのBPMになる。アニメ速度を2にすると倍の速さ', group: 'content', min: 40, max: 240, digits: 0 },
+  { kind: 'number', key: 'bpm', label: 'BPM', hint: 'ビートに合わせて動くパターン（ストロボ・チェイス・ビームウェーブなど）のテンポ。シーケンスを流すと、シーケンスのBPMになる。アニメ速度を2にすると倍の速さ', group: 'content', ...BPM_RANGE, digits: 0 },
 
   { kind: 'enum', key: 'mode', label: '描画方式', hint: 'ベクター: 図形をそのまま、きれいな線で描く。スキャン: pps・スキャナ性能・ダンピング・カラーシフトを反映して、実機の見え方を再現する', group: 'projector', options: [
     { value: 'clean', label: 'ベクター' },

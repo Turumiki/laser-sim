@@ -1,5 +1,5 @@
-import type { FrameBuilder } from '../frame';
-import { ASSET_PREFIX, assetName, drawAsset } from '../assets';
+import type { FrameBuilder } from '../frame.ts';
+import { ASSET_PREFIX, assetName, drawAsset } from '../assets.ts';
 
 export type PatternCategory = 'line' | 'shape' | 'beam' | 'test' | 'asset';
 

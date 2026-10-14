@@ -1,5 +1,5 @@
-import type { Settings } from './params';
-import type { Show } from './show';
+import type { Settings } from './params.ts';
+import type { Show } from './show.ts';
 
 const GREEN = '#00ff40', CYAN = '#00e5ff', BLUE = '#2060ff', MAGENTA = '#ff20c0', RED = '#ff2020', WHITE = '#ffffff';
 

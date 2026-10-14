@@ -1,8 +1,8 @@
-import { Frame, FrameBuilder } from './frame';
-import type { Settings } from './params';
-import { getPattern } from './patterns';
-import { hexToRgb, hsv } from './color';
-import { DEG_PER_SEC_PER_KPPS } from './scanner';
+import { Frame, FrameBuilder } from './frame.ts';
+import type { Settings } from './params.ts';
+import { getPattern } from './patterns/index.ts';
+import { hexToRgb, hsv } from './color.ts';
+import { DEG_PER_SEC_PER_KPPS } from './scanner.ts';
 
 const builder = new FrameBuilder();
 const rgb: [number, number, number] = [0, 0, 0];

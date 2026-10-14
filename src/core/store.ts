@@ -1,4 +1,4 @@
-import type { Settings } from './params';
+import type { Settings } from './params.ts';
 
 // local: この画面での操作 / remote: 同期で届いた変更
 export type Origin = 'local' | 'remote';

@@ -1,14 +1,8 @@
-import { locate, type Show } from '../src/core/show.ts';
+import { BPM_RANGE, DEFAULTS } from '../src/core/params.ts';
+import type { ShowState } from '../src/core/protocol.ts';
+import { locate, STEP_BEATS, type Show } from '../src/core/show.ts';
 import { BUILTIN_SHOWS } from '../src/core/shows.ts';
 import { StateStore } from './state.ts';
-
-export interface ShowState {
-  playing: boolean;
-  id: string | null;
-  index: number;
-  // 再生を始めたサーバーの時刻（ms）
-  startedAt: number;
-}
 
 // ショーの再生はサーバーで行う。全部の画面が同じ瞬間に切り替わり、操作画面を閉じても続く
 export class ShowPlayer {
@@ -87,6 +81,8 @@ export class ShowPlayer {
   }
 }
 
+const clamp = (v: number, r: { min: number; max: number }) => Math.min(r.max, Math.max(r.min, v));
+
 // 外から来たショーの形を確かめる（中身の値は各画面の sanitize で揃える）
 function validate(v: unknown): Show | null {
   if (!v || typeof v !== 'object') return null;
@@ -95,13 +91,13 @@ function validate(v: unknown): Show | null {
   const steps = o.steps
     .filter((s): s is { beats: unknown; values: unknown } => !!s && typeof s === 'object')
     .map(s => ({
-      beats: Math.min(256, Math.max(0.25, Number(s.beats) || 4)),
+      beats: clamp(Number(s.beats) || 4, STEP_BEATS),
       values: s.values && typeof s.values === 'object' ? s.values as Record<string, unknown> : {},
     }));
   return {
     id: 'custom',
     name: typeof o.name === 'string' ? o.name.slice(0, 60) : 'カスタム',
-    bpm: Math.min(300, Math.max(20, Number(o.bpm) || 120)),
+    bpm: clamp(Number(o.bpm) || DEFAULTS.bpm, BPM_RANGE),
     loop: o.loop !== false,
     steps,
   };

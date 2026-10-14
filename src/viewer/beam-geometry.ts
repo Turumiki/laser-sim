@@ -80,6 +80,9 @@ export interface BeamSource {
   frame: FramePoints | null;
 }
 
+// 1フレームに描ける数（光の膜の三角形・ビームの線・当たった所の線）。GPU側のバッファも同じ大きさで作る
+export const CAPACITY = { sheets: 160000, rays: 60000, wall: 160000 } as const;
+
 // 頂点の並び。位置・色・光源の位置・光の古さ（露光時間を1とする。時刻がないときは -1）
 export class Arrays {
   pos: Float32Array;
@@ -113,9 +116,9 @@ export class Arrays {
 }
 
 export class BeamGeometry {
-  readonly sheets = new Arrays(160000, 3);
-  readonly rays = new Arrays(60000, 2);
-  readonly wall = new Arrays(160000, 2);
+  readonly sheets = new Arrays(CAPACITY.sheets, 3);
+  readonly rays = new Arrays(CAPACITY.rays, 2);
+  readonly wall = new Arrays(CAPACITY.wall, 2);
   private hits: HitTarget;
   private rig: Rig = { distance: 8, haze: 1, roll: 0, eye: false };
   private ext = 0;

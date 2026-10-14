@@ -4,6 +4,7 @@ import { networkInterfaces } from 'node:os';
 import path from 'node:path';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { isShared, sanitize } from '../src/core/params.ts';
+import { isValidChannel } from '../src/core/protocol.ts';
 import { AssetStore, validateAsset } from './assets.ts';
 import { Clocks } from './clock.ts';
 import { ShowPlayer } from './show.ts';
@@ -40,11 +41,9 @@ for (const ch of states.keys()) {
 // 画面に渡すのは、共通の設定とそのチャンネルの設定を合わせたもの
 const merged = (ch: string) => ({ ...states.get(SHARED), ...states.get(ch) });
 
-// チャンネル名は英数字と _ - だけ。オブジェクトの特別な名前（__proto__ など）は使わせない
-const RESERVED = new Set(['__proto__', 'constructor', 'prototype']);
 function channelOf(url: URL) {
-  const ch = url.searchParams.get('ch') || 'default';
-  return /^[A-Za-z0-9_-]{1,40}$/.test(ch) && !RESERVED.has(ch) ? ch : 'default';
+  const ch = url.searchParams.get('ch');
+  return isValidChannel(ch) ? ch : 'default';
 }
 const assets = new AssetStore(path.join(ROOT, '.assets'));
 const channels = new Map<string, Set<WebSocket>>();
@@ -70,7 +69,7 @@ function channelList() {
 // 対象のチャンネル。channels に名前の配列があればそれだけ、なければ全部
 function targetsOf(msg: Record<string, unknown>) {
   if (!Array.isArray(msg.channels)) return channelList();
-  return msg.channels.filter((c): c is string => typeof c === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(c) && !RESERVED.has(c));
+  return msg.channels.filter(isValidChannel);
 }
 
 function showCommand(ch: string, msg: Record<string, unknown>) {

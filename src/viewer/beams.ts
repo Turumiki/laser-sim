@@ -5,7 +5,7 @@ import {
 import type { Frame } from '../core/frame';
 import type { Settings } from '../core/params';
 import type { Scanner } from '../core/scanner';
-import { BeamGeometry, type Arrays, type BeamSource, type Projector, type Rig, type ScanWindow } from './beam-geometry';
+import { BeamGeometry, CAPACITY, type Arrays, type BeamSource, type Projector, type Rig, type ScanWindow } from './beam-geometry';
 import type { Built, WorkerRequest, WorkerResult } from './beam-worker';
 import type { Surfaces } from './surfaces';
 import { smokeTexture } from './noise';
@@ -252,9 +252,9 @@ const spotMaterial = (uniforms: HazeUniforms) => new ShaderMaterial({
 // Worker の結果は次のフレームで届くので、表示は1フレーム遅れる
 export class Beams {
   readonly group = new Group();
-  private sheets = new GpuBuffer(160000, 3);
-  private rays = new GpuBuffer(60000, 2);
-  private wall = new GpuBuffer(160000, 2);
+  private sheets = new GpuBuffer(CAPACITY.sheets, 3);
+  private rays = new GpuBuffer(CAPACITY.rays, 2);
+  private wall = new GpuBuffer(CAPACITY.wall, 2);
   private projectors: readonly Projector[] = [{ pos: [0, 0, 0], yaw: 0, mirror: false }];
   private rig: Rig;
   private surfaces: Surfaces;

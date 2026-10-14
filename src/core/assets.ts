@@ -1,4 +1,4 @@
-import type { FrameBuilder } from './frame';
+import type { FrameBuilder } from './frame.ts';
 
 // 読み込んだ素材（画像・SVG・ILDAファイル）。中身はサーバーに置き、パターン名 "asset:<id>" で使う。
 // 座標は -1..1（ILDAの座標空間と同じ正方形）、上が +y

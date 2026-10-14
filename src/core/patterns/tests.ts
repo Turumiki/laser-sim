@@ -1,4 +1,4 @@
-import type { Pattern } from './registry';
+import type { Pattern } from './registry.ts';
 
 const TAU = Math.PI * 2;
 

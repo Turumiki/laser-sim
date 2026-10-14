@@ -1,4 +1,7 @@
-import type { Settings } from './params';
+import type { Settings } from './params.ts';
+
+// 1ステップの長さ（拍）の範囲
+export const STEP_BEATS = { min: 0.25, max: 256 } as const;
 
 // ショー＝キュー（ステップ）を順に並べたもの。長さは拍数で持ち、BPMで秒にする
 export interface Step {

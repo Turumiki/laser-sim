@@ -1,4 +1,4 @@
-import type { Pattern } from './registry';
+import type { Pattern } from './registry.ts';
 
 // 0→1→0。1本の線を往復でなぞると消灯せずに済む
 const tri = (u: number) => 1 - Math.abs(2 * u - 1);

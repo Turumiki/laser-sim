@@ -11,6 +11,7 @@ import { loadLocal, saveLocal } from '../core/persist';
 import { Store } from '../core/store';
 import { Simulation } from '../engine/simulation';
 import { connectSync } from '../sync/client';
+import { isValidChannel } from '../core/protocol';
 import { fastTooltips } from '../control/tooltip';
 import { Cookies } from './cookies';
 import { VolumePass, type VolumeProjector } from './volume';
@@ -52,10 +53,9 @@ const useChannels = () => {
   }
 };
 
-const validChannel = (t: unknown): t is string => typeof t === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(t);
 // 1台ずつのチャンネル。足りない台は、最後に決めた台と同じチャンネルにする
 const assigned = () => {
-  const list = vs.channels.filter(validChannel);
+  const list = vs.channels.filter(isValidChannel);
   return Array.from({ length: vs.count }, (_, i) => list[Math.min(i, list.length - 1)] ?? channel);
 };
 

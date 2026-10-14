@@ -1,13 +1,5 @@
 import { DEFAULTS } from '../src/core/params.ts';
-
-export interface Clock {
-  // この時刻（サーバーのms）に
-  t0: number;
-  // アニメーション時間がこの値で
-  anim: number;
-  // 1秒あたりこれだけ進む
-  rate: number;
-}
+import type { Clock } from '../src/core/protocol.ts';
 
 const TIME_KEYS = ['timeScale', 'animSpeed', 'paused'];
 

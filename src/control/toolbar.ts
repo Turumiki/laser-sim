@@ -1,4 +1,5 @@
 import { OUTPUT_SIZES } from '../core/params';
+import { isValidChannel } from '../core/protocol';
 import type { Store } from '../core/store';
 import { el } from './dom';
 import { attachExport } from './export-button';
@@ -54,7 +55,7 @@ export function buildToolbar(root: HTMLElement, store: Store, recorder: Recorder
     let next = chSel.value;
     if (next === NEW) {
       next = prompt('チャンネル名（英数字と _ - だけ）') ?? '';
-      if (!/^[A-Za-z0-9_-]{1,40}$/.test(next)) { chSel.value = channel; return; }
+      if (!isValidChannel(next)) { chSel.value = channel; return; }
     }
     if (next === channel) return;
     const q = new URLSearchParams(location.search);

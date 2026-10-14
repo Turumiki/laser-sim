@@ -1,4 +1,4 @@
-import { Frame } from './frame';
+import { Frame } from './frame.ts';
 
 export type FrameSource = (out: Frame, t: number) => void;
 

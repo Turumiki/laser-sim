@@ -1,10 +1,10 @@
-import { sanitize } from '../core/params';
+import { BPM_RANGE, DEFAULTS, sanitize } from '../core/params';
 import { getPattern } from '../core/patterns';
 import { loadLocal, saveLocal } from '../core/persist';
-import { locate, showLength, STEP_KEYS, stepFrom, type Show } from '../core/show';
+import { locate, showLength, STEP_BEATS, STEP_KEYS, stepFrom, type Show } from '../core/show';
 import { BUILTIN_SHOWS } from '../core/shows';
 import type { Store } from '../core/store';
-import type { ShowInfo } from '../sync/client';
+import type { ShowInfo } from '../core/protocol';
 import { el } from './dom';
 import { attachExport } from './export-button';
 
@@ -69,7 +69,7 @@ export function buildSequence(root: HTMLElement, store: Store, send: Send, serve
   );
 
   // --- 2行目: 編集 ---
-  const bpm = el('input', { class: 'num', type: 'number', min: '20', max: '300', step: '1' });
+  const bpm = el('input', { class: 'num', type: 'number', min: String(BPM_RANGE.min), max: String(BPM_RANGE.max), step: '1' });
   bpm.addEventListener('change', () => {
     const show = current();
     if (show && editable()) saveCustom({ ...show, bpm: Number(bpm.value) || show.bpm });
@@ -82,7 +82,7 @@ export function buildSequence(root: HTMLElement, store: Store, send: Send, serve
 
   const add = el('button', { class: 'tb', title: '今の設定（絵柄とレーザー機）を、選んだステップの後ろ（選んでいなければ最後）に追加する' }, '＋ 今の設定を追加');
   add.addEventListener('click', () => {
-    const show = current() ?? { id: 'custom', name: 'カスタム', bpm: 128, loop: true, steps: [] };
+    const show = current() ?? { id: 'custom', name: 'カスタム', bpm: DEFAULTS.bpm, loop: true, steps: [] };
     const steps = [...show.steps];
     const at = selStep >= 0 ? selStep + 1 : steps.length;
     steps.splice(at, 0, stepFrom(store.get(), 8));
@@ -90,7 +90,7 @@ export function buildSequence(root: HTMLElement, store: Store, send: Send, serve
     saveCustom({ ...show, steps });
   });
 
-  const beats = el('input', { class: 'num', type: 'number', min: '0.25', max: '256', step: '1' });
+  const beats = el('input', { class: 'num', type: 'number', min: String(STEP_BEATS.min), max: String(STEP_BEATS.max), step: '1' });
   beats.addEventListener('change', () => {
     const show = current();
     if (!show || selStep < 0) return;
@@ -139,7 +139,7 @@ export function buildSequence(root: HTMLElement, store: Store, send: Send, serve
 
     customTools.hidden = !editable();
     builtinTools.hidden = editable();
-    bpm.value = String(show?.bpm ?? 128);
+    bpm.value = String(show?.bpm ?? DEFAULTS.bpm);
     loop.checked = show?.loop ?? true;
     const step = show?.steps[selStep];
     stepTools.hidden = !step;
