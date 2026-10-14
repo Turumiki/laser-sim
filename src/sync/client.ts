@@ -8,8 +8,6 @@ interface Options {
   channel: string;
   // control: 操作を送る / output: 受け取るだけ
   role: 'control' | 'output';
-  onStatus?: (s: SyncStatus) => void;
-  onShow?: (s: ShowInfo) => void;
 }
 
 // サーバーの時間軸。全部の画面がこれに合わせることで、アニメーションの位置が揃う
@@ -50,6 +48,11 @@ export function connectSync(store: Store, opts: Options) {
   let retry = 0;
   let closed = false;
   const time = new TimeBase();
+  // 接続の状態とショーの知らせ。受け取る側はあとから登録する（登録したときに今の状態を1回渡す）
+  let status: SyncStatus = 'connecting';
+  let onStatus: ((s: SyncStatus) => void) | null = null;
+  let onShow: ((s: ShowInfo) => void) | null = null;
+  const setStatus = (s: SyncStatus) => { status = s; onStatus?.(s); };
   const ping = () => { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping', t: Date.now() })); };
   const pinger = setInterval(ping, 5000);
 
@@ -76,15 +79,15 @@ export function connectSync(store: Store, opts: Options) {
   }
 
   const connect = () => {
-    opts.onStatus?.('connecting');
+    setStatus('connecting');
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     ws = new WebSocket(`${proto}://${location.host}/sync?ch=${encodeURIComponent(opts.channel)}`);
-    ws.onopen = () => { retry = 0; opts.onStatus?.('open'); ping(); ping(); };
+    ws.onopen = () => { retry = 0; setStatus('open'); ping(); ping(); };
     ws.onmessage = e => {
       const msg = parseServerMessage(String(e.data));
       if (!msg) return;
       if (msg.type === 'pong') { time.onPong(msg.t, msg.server); return; }
-      if (msg.type === 'show') { opts.onShow?.(msg); return; }
+      if (msg.type === 'show') { onShow?.(msg); return; }
       if (msg.clock) time.clock = msg.clock;
       if (msg.type === 'hello') {
         myId = msg.id;
@@ -102,14 +105,14 @@ export function connectSync(store: Store, opts: Options) {
       }
     };
     ws.onclose = () => {
-      opts.onStatus?.('closed');
+      setStatus('closed');
       ws = null;
       if (!closed) setTimeout(connect, Math.min(5000, 500 * 2 ** retry++));
     };
   };
 
   if (location.protocol.startsWith('http')) connect();
-  else opts.onStatus?.('closed');
+  else setStatus('closed');
   // ショーの操作（play / stop / save）
   const show = (msg: Record<string, unknown>) => {
     if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'show', ...msg }));
@@ -120,5 +123,9 @@ export function connectSync(store: Store, opts: Options) {
     clearInterval(pinger);
     ws?.close();
   };
-  return { time, show, close };
+  return {
+    time, show, close,
+    onStatus(fn: (s: SyncStatus) => void) { onStatus = fn; fn(status); },
+    onShow(fn: (s: ShowInfo) => void) { onShow = fn; },
+  };
 }

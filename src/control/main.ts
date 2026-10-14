@@ -1,55 +1,26 @@
 import './style.css';
-import { DEFAULTS, sanitize } from '../core/params';
-import { useServerAssets } from '../browser/assets';
-import { loadLocal, saveLocal } from '../browser/persist';
-import { Store } from '../core/store';
-import { Engine } from '../engine/engine';
-import { FrameTimer, startLoop } from '../engine/loop';
-import { connectSync, type SyncStatus } from '../sync/client';
+import { openScreen } from '../app/screen';
+import { preventDoubleTapZoom } from '../browser/dom';
+import { fastTooltips } from '../browser/tooltip';
+import type { SyncStatus } from '../sync/client';
 import { buildInspector } from './inspector';
 import { buildPatternGrid } from './pattern-grid';
-import { preventDoubleTapZoom } from '../browser/dom';
+import { Recorder } from './recorder';
 import { buildSequence } from './sequence';
 import { buildTabs } from './tabs';
-import { fastTooltips } from '../browser/tooltip';
-import { Recorder } from './recorder';
 import { buildToolbar } from './toolbar';
 import { attachViewer } from './viewer';
 
-useServerAssets();
-
 const $ = (id: string) => document.getElementById(id)!;
 
-const params = new URLSearchParams(location.search);
-const channel = params.get('ch') || 'default';
-const saveKey = `laser:${channel}:control`;
-
-interface Saved { state?: Record<string, unknown>; animT?: number }
-const saved = loadLocal<Saved>(saveKey);
-
-const store = new Store({
-  ...DEFAULTS,
-  ...sanitize(saved?.state ?? {}),
-  ...sanitize(Object.fromEntries(params)),
-});
-
 const canvas = $('preview') as HTMLCanvasElement;
-const engine = new Engine(canvas, store);
-if (saved?.animT) engine.scanner.animT = saved.animT;
-
-let sync: SyncStatus = 'connecting';
-let inspector: ReturnType<typeof buildInspector> | null = null;
-const sequence = buildSequence($('sequence'), store, msg => link.show(msg), () => link.time.serverNow(), label => inspector?.setTarget(label));
-const link = connectSync(store, {
-  channel,
-  role: 'control',
-  onStatus: s => { sync = s; },
-  onShow: info => sequence.onShow(info),
-});
+const { channel, store, engine, link, timer, run } = openScreen('control', canvas);
 
 const recorder = new Recorder(canvas);
 buildToolbar($('toolbar'), store, recorder, channel);
-inspector = buildInspector($('inspector'), store, channel);
+const inspector = buildInspector($('inspector'), store, channel);
+const sequence = buildSequence($('sequence'), store, msg => link.show(msg), () => link.time.serverNow(), label => inspector.setTarget(label));
+link.onShow(info => sequence.onShow(info));
 buildPatternGrid($('patterns'), store);
 buildTabs($('bottom'));
 fastTooltips();
@@ -65,11 +36,8 @@ addEventListener('keydown', e => {
   }
 });
 
-const save = () => saveLocal(saveKey, { state: store.get(), animT: engine.scanner.animT });
-setInterval(save, 2000);
-addEventListener('pagehide', save);
-
-const timer = new FrameTimer();
+let sync: SyncStatus = 'connecting';
+link.onStatus(s => { sync = s; });
 const status = $('status');
 const seqTab = document.querySelector<HTMLButtonElement>('.tabs button[data-tab="sequence"]')!;
 setInterval(() => {
@@ -93,10 +61,4 @@ setInterval(() => {
   );
 }, 250);
 
-startLoop(dt => {
-  timer.begin();
-  engine.update(dt);
-  engine.sim.syncAnim(link.time.animNow());
-  engine.render();
-  timer.end();
-});
+run();

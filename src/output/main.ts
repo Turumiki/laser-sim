@@ -1,40 +1,9 @@
-import { DEFAULTS, sanitize } from '../core/params';
-import { useServerAssets } from '../browser/assets';
-import { loadLocal, saveLocal } from '../browser/persist';
-import { Store } from '../core/store';
-import { Engine } from '../engine/engine';
-import { FrameTimer, startLoop } from '../engine/loop';
-import { connectSync } from '../sync/client';
-
-useServerAssets();
-
-const params = new URLSearchParams(location.search);
-const channel = params.get('ch') || 'default';
-const saveKey = `laser:${channel}:output`;
-
-interface Saved { state?: Record<string, unknown>; animT?: number }
-const saved = loadLocal<Saved>(saveKey);
-
-// 前回の状態 → URLの指定 → サーバーの設定 の順に上書き
-const store = new Store({
-  ...DEFAULTS,
-  ...sanitize(saved?.state ?? {}),
-  ...sanitize(Object.fromEntries(params)),
-});
+import { openScreen } from '../app/screen';
 
 const canvas = document.getElementById('out') as HTMLCanvasElement;
-let engine: Engine;
-try {
-  engine = new Engine(canvas, store);
-} catch (e) {
-  document.body.innerHTML = `<p id="error">${(e as Error).message}</p>`;
-  throw e;
-}
-if (saved?.animT) engine.scanner.animT = saved.animT;
-
-const sync = connectSync(store, { channel, role: 'output' });
+const { params, store, engine, link, timer, run } = openScreen('output', canvas);
 // 開発中だけ、ブラウザのコンソールから中身を見られるようにする
-if (import.meta.env.DEV) Object.assign(window, { laser: { engine, sync, store } });
+if (import.meta.env.DEV) Object.assign(window, { laser: { engine, sync: link, store } });
 
 // OBSではウィンドウと出力サイズが一致するので等倍。大きいウィンドウでも拡大はしない
 const fit = () => {
@@ -46,27 +15,14 @@ const fit = () => {
 addEventListener('resize', fit);
 store.subscribe(changed => { if (changed.output) fit(); });
 
-const save = () => saveLocal(saveKey, { state: store.get(), animT: engine.scanner.animT });
-setInterval(save, 2000);
-addEventListener('pagehide', save);
-
-const timer = new FrameTimer();
-let stats: HTMLElement | null = null;
 if (params.get('stats') === '1') {
-  stats = document.createElement('div');
-  stats.id = 'stats';
+  const stats = Object.assign(document.createElement('div'), { id: 'stats' });
   document.body.append(stats);
   setInterval(() => {
-    stats!.textContent = `${timer.avg.toFixed(2)} ms/frame · ${engine.segments} seg`;
+    stats.textContent = `${timer.avg.toFixed(2)} ms/frame · ${engine.segments} seg`;
   }, 250);
 }
 
 engine.render();
 fit();
-startLoop(dt => {
-  timer.begin();
-  engine.update(dt);
-  engine.sim.syncAnim(sync.time.animNow());
-  engine.render();
-  timer.end();
-});
+run();

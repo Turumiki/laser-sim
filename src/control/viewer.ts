@@ -1,4 +1,4 @@
-import { outputSize } from '../core/params';
+import { clampParam, outputSize } from '../core/params';
 import type { Store } from '../core/store';
 import { el } from '../browser/dom';
 
@@ -33,7 +33,6 @@ export function attachViewer(root: HTMLElement, canvas: HTMLCanvasElement, store
   store.subscribe(ch => { if (ch.output || ch.scanAngle !== undefined) fit(); });
   fit();
 
-  const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
   const wrap = (a: number) => ((a % 360) + 360) % 360;
   // 画面上のpx → 位置の単位（正方形の半分が1）
   const perPx = () => {
@@ -80,17 +79,17 @@ export function attachViewer(root: HTMLElement, canvas: HTMLCanvasElement, store
     if (pinch && before) {
       const g = two();
       store.set({
-        size: clamp(pinch.size * g.dist / Math.max(1, pinch.dist), 0.05, 1.5),
+        size: clampParam('size', pinch.size * g.dist / Math.max(1, pinch.dist)),
         // 画面はy下向きなので、見た目の時計回りが角度のマイナスになる
         angle: wrap(pinch.angle - (g.ang - pinch.ang) * 180 / Math.PI),
-        offX: clamp(s.offX + (g.mx - before.mx) * perPx(), -1.78, 1.78),
-        offY: clamp(s.offY - (g.my - before.my) * perPx(), -1, 1),
+        offX: clampParam('offX', s.offX + (g.mx - before.mx) * perPx()),
+        offY: clampParam('offY', s.offY - (g.my - before.my) * perPx()),
       });
     } else if (pointers.size === 1) {
       if (rotate) store.set({ angle: wrap(s.angle + dx * 0.3) });
       else store.set({
-        offX: clamp(s.offX + dx * perPx(), -1.78, 1.78),
-        offY: clamp(s.offY - dy * perPx(), -1, 1),
+        offX: clampParam('offX', s.offX + dx * perPx()),
+        offY: clampParam('offY', s.offY - dy * perPx()),
       });
     }
   });
@@ -109,7 +108,7 @@ export function attachViewer(root: HTMLElement, canvas: HTMLCanvasElement, store
     const d = e.deltaY || e.deltaX;
     const s = store.get();
     if (e.shiftKey) store.set({ angle: wrap(s.angle + d * 0.1) });
-    else store.set({ size: clamp(s.size * Math.exp(-d * 0.0015), 0.05, 1.5) });
+    else store.set({ size: clampParam('size', s.size * Math.exp(-d * 0.0015)) });
   }, { passive: false });
 
   canvas.addEventListener('dblclick', () => store.set({ offX: 0, offY: 0 }));

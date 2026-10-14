@@ -1,19 +1,20 @@
-import { BPM_RANGE, DEFAULTS, sanitize } from '../core/params';
-import { getPattern } from '../core/patterns';
+import { el } from '../browser/dom';
 import { loadLocal, saveLocal } from '../browser/persist';
-import { locate, showLength, STEP_BEATS, STEP_KEYS, stepFrom, type Show } from '../core/show';
+import { BPM_RANGE, DEFAULTS, sanitize } from '../core/params';
+import type { ShowInfo } from '../core/protocol';
+import { showLength, STEP_BEATS, STEP_KEYS, stepFrom, type Show } from '../core/show';
 import { BUILTIN_SHOWS } from '../core/shows';
 import type { Store } from '../core/store';
-import type { ShowInfo } from '../core/protocol';
-import { el } from '../browser/dom';
 import { attachExport } from './export-button';
+import { fmtTime, patternName, playhead, Timeline } from './sequence-timeline';
 
 type Send = (msg: Record<string, unknown>) => void;
 
 const SEQ_KEY = 'laser:sequence';
 const ALL_KEY = 'laser:sequence:all';
 
-const fmt = (sec: number) => `${Math.floor(sec / 60)}:${(sec % 60).toFixed(1).padStart(4, '0')}`;
+// 「＋ 今の設定を追加」で足すステップの長さ（拍）
+const NEW_STEP_BEATS = 8;
 
 // シーケンス（ショー）のタブ。
 // 1行目: 再生まわり / 2行目: 編集（カスタムのときだけ） / タイムライン: 拍数に比例した長さのブロック
@@ -22,6 +23,8 @@ export function buildSequence(root: HTMLElement, store: Store, send: Send, serve
   let info: ShowInfo | null = null;
   let selected = loadLocal<string>(SEQ_KEY) ?? BUILTIN_SHOWS[0].id;
   let selStep = -1;
+  // ステップを呼び出しているところ（設定の変更をそのステップに書き戻さない）
+  let loading = false;
 
   const current = (): Show | null =>
     selected === 'custom' ? info?.custom ?? null : BUILTIN_SHOWS.find(s => s.id === selected) ?? null;
@@ -85,7 +88,7 @@ export function buildSequence(root: HTMLElement, store: Store, send: Send, serve
     const show = current() ?? { id: 'custom', name: 'カスタム', bpm: DEFAULTS.bpm, loop: true, steps: [] };
     const steps = [...show.steps];
     const at = selStep >= 0 ? selStep + 1 : steps.length;
-    steps.splice(at, 0, stepFrom(store.get(), 8));
+    steps.splice(at, 0, stepFrom(store.get(), NEW_STEP_BEATS));
     selStep = at;
     saveCustom({ ...show, steps });
   });
@@ -127,8 +130,19 @@ export function buildSequence(root: HTMLElement, store: Store, send: Send, serve
   const builtinTools = el('div', { class: 'seq-row' },
     el('span', { class: 'seq-note' }, '組み込みのシーケンスはそのままでは編集できません。'), copy);
 
-  const strip = el('div', { class: 'strip' });
-  root.append(transport, customTools, builtinTools, strip);
+  // 止まっている間は、クリックでそのキューを出す。カスタムなら、選んでいる間の設定の変更はそのステップに入る。
+  // もう一度クリックで選択を外す
+  const timeline = new Timeline(i => {
+    selStep = selStep === i ? -1 : i;
+    const st = current()?.steps[selStep];
+    if (st && !info?.state.playing) {
+      loading = true;
+      store.set(sanitize(st.values));
+      loading = false;
+    }
+    render();
+  });
+  root.append(transport, customTools, builtinTools, timeline.root);
 
   function render() {
     const show = current();
@@ -149,43 +163,12 @@ export function buildSequence(root: HTMLElement, store: Store, send: Send, serve
     }
 
     const editing = editable() && step && !info?.state.playing;
-    onEdit(editing ? `ステップ ${selStep + 1}${step.values.pattern ? '：' + getPattern(step.values.pattern).name : ''}` : null);
+    const name = patternName(step?.values.pattern);
+    onEdit(editing ? `ステップ ${selStep + 1}${name ? '：' + name : ''}` : null);
 
-    strip.replaceChildren();
-    if (!show?.steps.length) {
-      strip.append(el('p', { class: 'empty' }, editable()
-        ? '絵柄を決めてから「＋ 今の設定を追加」を押すと、ステップとして並んでいきます。'
-        : 'ステップがありません。'));
-    } else {
-      show.steps.forEach((st, i) => {
-        const name = st.values.pattern ? getPattern(st.values.pattern).name : '—';
-        const bar = el('span', { class: 'bar' });
-        bar.style.background = st.values.colorMode && st.values.colorMode !== 'single'
-          ? 'linear-gradient(90deg, #f33, #ff3, #3f3, #3ff, #33f, #f3f)'
-          : st.values.color ?? '#888';
-        const b = el('button', { class: 'block', title: `${i + 1}. ${name}・${st.beats}拍` },
-          bar,
-          el('span', { class: 'no' }, String(i + 1)),
-          el('span', { class: 'name' }, name),
-          el('small', {}, `${st.beats}拍`),
-          el('span', { class: 'fill' }),
-        );
-        b.style.width = `${Math.max(88, st.beats * 14)}px`;
-        b.classList.toggle('sel', i === selStep);
-        // 止まっている間は、クリックでそのキューを出す。カスタムなら、選んでいる間の設定の変更はそのステップに入る。
-        // もう一度クリックで選択を外す
-        b.addEventListener('click', () => {
-          selStep = selStep === i ? -1 : i;
-          if (selStep >= 0 && !info?.state.playing) {
-            loading = true;
-            store.set(sanitize(st.values));
-            loading = false;
-          }
-          render();
-        });
-        strip.append(b);
-      });
-    }
+    timeline.render(show, selStep, editable()
+      ? '絵柄を決めてから「＋ 今の設定を追加」を押すと、ステップとして並んでいきます。'
+      : 'ステップがありません。');
     tick();
   }
 
@@ -193,8 +176,6 @@ export function buildSequence(root: HTMLElement, store: Store, send: Send, serve
   // 自分の操作だけ（再生で切り替わった値や、他の画面からの同期は入れない）。送るのは少しまとめてから
   const stepKeys = new Set<string>(STEP_KEYS as readonly string[]);
   let pending = 0;
-  // ステップを呼び出しているところ（自分で書き戻さない）
-  let loading = false;
   store.subscribe((changed, origin) => {
     if (loading || origin !== 'local' || !editable() || selStep < 0 || info?.state.playing) return;
     if (!Object.keys(changed).some(k => stepKeys.has(k))) return;
@@ -211,31 +192,17 @@ export function buildSequence(root: HTMLElement, store: Store, send: Send, serve
   // 再生中の位置（どのステップの何割まで来たか）を表示する
   function tick() {
     const show = current();
-    const blocks = strip.querySelectorAll<HTMLElement>('.block');
     if (!show?.steps.length) { status.textContent = ''; return; }
-    const total = showLength(show);
     if (!playing() || !info) {
-      blocks.forEach(b => { b.classList.remove('now'); (b.lastChild as HTMLElement).style.width = '0'; });
-      status.textContent = `${show.bpm} BPM · ${show.steps.length}ステップ · ${fmt(total)}`;
+      timeline.progress(show, null);
+      status.textContent = `${show.bpm} BPM · ${show.steps.length}ステップ · ${fmtTime(showLength(show))}`;
       return;
     }
     const t = (serverNow() - info.state.startedAt) / 1000;
-    const pos = locate(show, t);
+    timeline.progress(show, t);
+    const { total, pos, at } = playhead(show, t);
     const i = pos?.index ?? -1;
-    const at = show.loop ? t % total : Math.min(t, total);
-    blocks.forEach((b, k) => {
-      // 再生中のステップが見えていなければ、タイムラインをそこまで送る
-      if (k === i && !b.classList.contains('now')) {
-        const left = b.offsetLeft - strip.offsetLeft, right = left + b.offsetWidth;
-        if (left < strip.scrollLeft || right > strip.scrollLeft + strip.clientWidth) strip.scrollLeft = left - 16;
-      }
-      b.classList.toggle('now', k === i);
-      const fill = b.lastChild as HTMLElement;
-      const len = show.steps[k].beats * 60 / show.bpm;
-      fill.style.width = k === i && pos ? `${Math.min(100, (at - pos.start) / len * 100)}%` : '0';
-    });
-    const p = i >= 0 ? show.steps[i].values.pattern : undefined;
-    status.textContent = `${i + 1}/${show.steps.length} ${p ? getPattern(p).name : ''} · ${fmt(at)} / ${fmt(total)}`;
+    status.textContent = `${i + 1}/${show.steps.length} ${patternName(show.steps[i]?.values.pattern)} · ${fmtTime(at)} / ${fmtTime(total)}`;
   }
   setInterval(tick, 100);
 
@@ -245,12 +212,9 @@ export function buildSequence(root: HTMLElement, store: Store, send: Send, serve
     const id = info.state.id;
     const show = id === 'custom' ? info.custom : BUILTIN_SHOWS.find(s => s.id === id);
     if (!show?.steps.length) return null;
-    const total = showLength(show);
-    const t = (serverNow() - info.state.startedAt) / 1000;
-    const pos = locate(show, t);
-    const at = show.loop ? t % total : Math.min(t, total);
-    const p = pos ? show.steps[pos.index].values.pattern : undefined;
-    return `${show.name} ${pos ? pos.index + 1 : '-'}/${show.steps.length}${p ? ' ' + getPattern(p).name : ''} · ${fmt(at)}`;
+    const { pos, at } = playhead(show, (serverNow() - info.state.startedAt) / 1000);
+    const name = pos ? patternName(show.steps[pos.index].values.pattern) : '';
+    return `${show.name} ${pos ? pos.index + 1 : '-'}/${show.steps.length}${name ? ' ' + name : ''} · ${fmtTime(at)}`;
   }
 
   render();

@@ -207,6 +207,12 @@ export const isShared = (key: string) => {
   return !!p && SHARED_GROUPS.includes(p.group);
 };
 
+// 数値の設定を、その項目の範囲に収める
+export function clampParam(key: NumberParam['key'], v: number) {
+  const p = byKey.get(key);
+  return p?.kind === 'number' ? Math.min(p.max, Math.max(p.min, v)) : v;
+}
+
 export function outputSize(s: Pick<Settings, 'output'>): readonly [number, number] {
   return OUTPUT_SIZES[s.output] ?? OUTPUT_SIZES['1920x1080'];
 }
