@@ -11,10 +11,14 @@ export class StateStore {
   constructor(file: string) {
     this.file = file;
     try {
-      this.data = JSON.parse(readFileSync(file, 'utf8'));
-    } catch {
-      this.data = {};
-    }
+      const raw: unknown = JSON.parse(readFileSync(file, 'utf8'));
+      // チャンネルごとにオブジェクトのものだけを使う（手で書き換えたり壊れたりしたファイルでも起動できるように）
+      if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+        for (const [ch, d] of Object.entries(raw)) {
+          if (d && typeof d === 'object' && !Array.isArray(d)) this.data[ch] = d as Data;
+        }
+      }
+    } catch { /* 無いか壊れていれば空から始める */ }
     setInterval(() => this.flush(), 1000).unref();
   }
 

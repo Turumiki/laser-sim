@@ -32,7 +32,7 @@ export function serveStatic(root: string, pathname: string, res: ServerResponse)
   } catch {
     const missing = pathname === '/' || pathname.endsWith('.html');
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end(missing ? 'ビルドされていません。npm run build を実行してください。' : 'not found');
+    res.end(missing ? 'ビルドされていません。npm run build を実行してください。' : '見つかりません');
     return;
   }
   const ext = path.extname(file);

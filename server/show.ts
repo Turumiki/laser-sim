@@ -13,6 +13,11 @@ export class ShowPlayer {
 
   constructor(file: string, apply: ShowPlayer['apply'], notify: ShowPlayer['notify']) {
     this.custom = new StateStore(file);
+    // 保存されていたものも、送られてきたものと同じく形を確かめる
+    this.custom.rewrite(d => {
+      const show = validate(d.show);
+      return show ? { show } : {};
+    });
     this.apply = apply;
     this.notify = notify;
     setInterval(() => this.tick(), 10).unref();
@@ -26,6 +31,7 @@ export class ShowPlayer {
     return this.custom.keys();
   }
 
+  // 入れるときに validate を通しているので、中身は Show の形になっている
   customOf(ch: string): Show | null {
     return (this.custom.get(ch).show as Show | undefined) ?? null;
   }
@@ -84,7 +90,7 @@ export class ShowPlayer {
 const clamp = (v: number, r: { min: number; max: number }) => Math.min(r.max, Math.max(r.min, v));
 
 // 外から来たショーの形を確かめる（中身の値は各画面の sanitize で揃える）
-function validate(v: unknown): Show | null {
+export function validate(v: unknown): Show | null {
   if (!v || typeof v !== 'object') return null;
   const o = v as Record<string, unknown>;
   if (!Array.isArray(o.steps) || o.steps.length > 500) return null;
