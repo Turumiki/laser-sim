@@ -1,3 +1,4 @@
+import { retimeAsset } from '../core/assets';
 import { sanitize, type Settings } from '../core/params';
 import { parseServerMessage, type Clock, type ShowInfo } from '../core/protocol';
 import type { Store } from '../core/store';
@@ -88,6 +89,7 @@ export function connectSync(store: Store, opts: Options) {
       if (!msg) return;
       if (msg.type === 'pong') { time.onPong(msg.t, msg.server); return; }
       if (msg.type === 'show') { onShow?.(msg); return; }
+      if (msg.type === 'assetFps') { retimeAsset(msg.id, msg.fps); return; }
       if (msg.clock) time.clock = msg.clock;
       if (msg.type === 'hello') {
         myId = msg.id;

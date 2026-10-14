@@ -34,7 +34,9 @@ export type ServerMessage =
   | { type: 'hello'; id: string; data: Record<string, unknown>; clock: Clock }
   | { type: 'patch'; from: string | null; data: Record<string, unknown>; clock?: Clock }
   | { type: 'pong'; t: number; server: number }
-  | ({ type: 'show' } & ShowInfo);
+  | ({ type: 'show' } & ShowInfo)
+  // 素材のILDAのコマの速さが変わった（全チャンネルに届く）
+  | { type: 'assetFps'; id: string; fps: number };
 
 // 届いたメッセージの形を確かめる。中身の値は受け取る側で sanitize する
 export function parseServerMessage(raw: string): ServerMessage | null {
@@ -48,6 +50,7 @@ export function parseServerMessage(raw: string): ServerMessage | null {
     case 'patch': return isObj(o.data) ? o as ServerMessage : null;
     case 'pong': return typeof o.t === 'number' && typeof o.server === 'number' ? o as ServerMessage : null;
     case 'show': return isObj(o.state) ? o as ServerMessage : null;
+    case 'assetFps': return typeof o.id === 'string' && typeof o.fps === 'number' ? o as ServerMessage : null;
   }
   return null;
 }

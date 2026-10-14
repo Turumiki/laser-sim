@@ -1,4 +1,4 @@
-import type { AssetData, IldaFrame } from '../../core/assets';
+import { ILDA_FPS, type AssetData, type IldaFrame } from '../../core/assets';
 
 // ILDAの標準パレット（色番号で色を指定する形式 0・1 で、パレットが入っていないときに使う）
 const DEFAULT_PALETTE = [
@@ -21,7 +21,7 @@ const isHeader = (v: DataView, o: number) =>
   v.getUint8(o) === 0x49 && v.getUint8(o + 1) === 0x4c && v.getUint8(o + 2) === 0x44 && v.getUint8(o + 3) === 0x41;
 
 // .ild を読む。形式 0・1・4・5（点）と 2（パレット）に対応。コマの速さはファイルに無いので fps で決める
-export function parseIlda(buf: ArrayBuffer, fps = 30): AssetData {
+export function parseIlda(buf: ArrayBuffer, fps: number = ILDA_FPS.initial): AssetData {
   const v = new DataView(buf);
   let o = 0;
   let palette = DEFAULT_PALETTE.map(c => pack(c[0], c[1], c[2]));

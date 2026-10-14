@@ -24,7 +24,13 @@ export interface AssetInfo {
   id: string;
   name: string;
   kind: AssetData['kind'];
+  // ILDAのコマの速さ（ILDAのときだけ）
+  fps?: number;
 }
+
+// ILDAファイルにはコマの速さが入っていないので、読み込む側で決める。現場の再生ソフトと同じく素材ごとに持つ
+export const ILDA_FPS = { min: 1, max: 120, initial: 30 } as const;
+export const ILDA_FPS_CHOICES: readonly number[] = [10, 12, 15, 20, 24, 25, 30, 50, 60];
 
 export interface Asset extends AssetInfo {
   data: AssetData;
@@ -58,6 +64,12 @@ function load(id: string): Asset | null {
 // 自分で読み込んだ素材は、サーバーから取り直さずにすぐ使う
 export function primeAsset(a: Asset) {
   cache.set(a.id, a);
+}
+
+// コマの速さを変えた（取り直さずに、手元の写しを書き換える）
+export function retimeAsset(id: string, fps: number) {
+  const hit = cache.get(id);
+  if (hit && typeof hit === 'object' && hit.data.kind === 'ilda') hit.data.fps = fps;
 }
 
 // 読み込み直したり消したりしたときに、手元の写しを捨てる

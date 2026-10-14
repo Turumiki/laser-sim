@@ -1,4 +1,4 @@
-import { assetPattern, forgetAsset, primeAsset, type AssetData, type AssetInfo } from '../core/assets';
+import { assetPattern, forgetAsset, ILDA_FPS_CHOICES, primeAsset, retimeAsset, type AssetData, type AssetInfo } from '../core/assets';
 import { buildFrame } from '../core/build';
 import { Frame } from '../core/frame';
 import type { Store } from '../core/store';
@@ -36,14 +36,49 @@ export function buildAssetsPanel(root: HTMLElement, store: Store) {
     }
   });
 
-  root.append(el('h4', {}, '素材'), clips, el('div', { class: 'asset-tools' }, colors, note), input);
+  // ILDAの素材を選んでいるときだけ出す。ファイルにはコマの速さが入っていないので、ここで決める
+  const fps = el('select', { class: 'tb', title: 'ILDAのコマを1秒に何コマ進めるか。ILDAファイルには速さが入っていないので、作った人の想定に合わせる（よく使うのは 15・24・30）' });
+  for (const n of ILDA_FPS_CHOICES) fps.add(new Option(`${n} fps`, String(n)));
+  const fpsNote = el('span', { class: 'asset-note' });
+  const fpsBox = el('span', { class: 'asset-fps' }, el('span', { class: 'asset-note' }, 'コマの速さ'), fps, fpsNote);
+  fpsBox.hidden = true;
+  fps.addEventListener('change', async () => {
+    const a = selected();
+    if (!a) return;
+    const res = await fetch(`/api/assets/${encodeURIComponent(a.id)}`, { method: 'PATCH', body: JSON.stringify({ fps: Number(fps.value) }) });
+    if (!res.ok) { showFps(); return; }
+    a.fps = Number(fps.value);
+    // 他の画面にはサーバーから知らせが届く。この画面は先に変えておく
+    retimeAsset(a.id, a.fps);
+    showFps();
+  });
+
+  root.append(el('h4', {}, '素材'), clips, el('div', { class: 'asset-tools' }, colors, fpsBox, note), input);
 
   const buttons = new Map<string, HTMLButtonElement>();
+  const infos = new Map<string, AssetInfo>();
+  // 今のパターンが読み込んだILDAなら、その素材
+  const selected = () => {
+    const a = infos.get(store.get().pattern);
+    return a?.kind === 'ilda' ? a : null;
+  };
+  // 実際の速さは、アニメ速度を掛けたもの
+  const showFps = () => {
+    const a = selected();
+    fpsBox.hidden = !a;
+    if (!a) return;
+    const base = a.fps ?? 30, speed = store.get().animSpeed;
+    // 選択肢にない値（APIで変えたものなど）も出せるようにする
+    if (![...fps.options].some(o => o.value === String(base))) fps.add(new Option(`${base} fps`, String(base)));
+    fps.value = String(base);
+    fpsNote.textContent = speed === 1 ? '' : `実際は ${+(base * speed).toFixed(1)} fps（アニメ速度 ${speed}倍）`;
+  };
   async function refresh() {
     let list: AssetInfo[] = [];
     try { list = await (await fetch('/api/assets')).json(); } catch { /* サーバーが無ければ空 */ }
     clips.replaceChildren();
     buttons.clear();
+    infos.clear();
     for (const a of list) {
       const id = assetPattern(a.id);
       const del = el('span', { class: 'del', title: '削除（もう一度押すと消える）' }, '×');
@@ -66,6 +101,7 @@ export function buildAssetsPanel(root: HTMLElement, store: Store) {
         await refresh();
       });
       buttons.set(id, b);
+      infos.set(id, a);
       clips.append(b);
     }
     clips.append(add);
@@ -75,8 +111,12 @@ export function buildAssetsPanel(root: HTMLElement, store: Store) {
   const mark = () => {
     const cur = store.get().pattern;
     for (const [id, b] of buttons) b.classList.toggle('on', id === cur);
+    showFps();
   };
-  store.subscribe(ch => { if (ch.pattern !== undefined) mark(); });
+  store.subscribe(ch => {
+    if (ch.pattern !== undefined) mark();
+    else if (ch.animSpeed !== undefined) showFps();
+  });
   // 別の画面で読み込んだ素材も出す
   addEventListener('focus', () => { if (document.visibilityState === 'visible') refresh(); });
   refresh();

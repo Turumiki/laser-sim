@@ -23,3 +23,10 @@ test('知らない種類は null', () => {
   assert.equal(validateAsset({ kind: 'image' }), null);
   assert.equal(validateAsset('x'), null);
 });
+
+test('ILDAのコマの速さは 1〜120fps', () => {
+  const frames = [{ x: [0], y: [0], c: [0] }];
+  assert.ok(validateAsset({ kind: 'ilda', fps: 15, frames }));
+  assert.equal(validateAsset({ kind: 'ilda', fps: 0, frames }), null);
+  assert.equal(validateAsset({ kind: 'ilda', fps: 500, frames }), null);
+});

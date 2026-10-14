@@ -80,6 +80,12 @@ export class Hub {
     for (const ws of this.clients.get(ch) ?? []) if (ws.readyState === ws.OPEN) ws.send(msg);
   }
 
+  // つながっている全部の画面に送る
+  broadcastAll(msg: unknown) {
+    const s = JSON.stringify(msg);
+    for (const ch of this.clients.keys()) this.send(ch, s);
+  }
+
   private broadcastShow(ch: string) {
     this.send(ch, JSON.stringify({ type: 'show', ...this.showInfo(ch) }));
   }

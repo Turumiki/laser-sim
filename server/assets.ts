@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import type { AssetData, AssetInfo } from '../src/core/assets.ts';
+import { ILDA_FPS, type AssetData, type AssetInfo } from '../src/core/assets.ts';
 
 // 読み込んだ素材の置き場。1つ1ファイル（JSON）。一覧は起動時に読んで持っておく
 export class AssetStore {
@@ -34,8 +34,20 @@ export class AssetStore {
   add(name: string, data: AssetData): AssetInfo {
     const id = randomUUID().slice(0, 8);
     const info: AssetInfo = { id, name: name.slice(0, 60) || '素材', kind: data.kind };
+    if (data.kind === 'ilda') info.fps = data.fps;
     writeFileSync(this.file(id), JSON.stringify({ ...info, data }));
     this.infos.set(id, info);
+    return info;
+  }
+
+  // ILDAのコマの速さを変える。ILDAの素材でなければ null
+  setFps(id: string, fps: number): AssetInfo | null {
+    const info = this.infos.get(id);
+    if (info?.kind !== 'ilda') return null;
+    const a = JSON.parse(readFileSync(this.file(id), 'utf8')) as { data: { fps: number } };
+    a.data.fps = fps;
+    writeFileSync(this.file(id), JSON.stringify(a));
+    info.fps = fps;
     return info;
   }
 
@@ -55,10 +67,13 @@ function infoOf(v: unknown, id: string): AssetInfo | null {
   if (!v || typeof v !== 'object') return null;
   const a = v as Record<string, unknown>;
   if (a.id !== id || typeof a.name !== 'string' || (a.kind !== 'vector' && a.kind !== 'ilda')) return null;
-  return { id, name: a.name, kind: a.kind };
+  if (a.kind === 'vector') return { id, name: a.name, kind: a.kind };
+  const fps = (a.data as { fps?: unknown } | undefined)?.fps;
+  return { id, name: a.name, kind: a.kind, fps: validFps(fps) ? fps : ILDA_FPS.initial };
 }
 
 const finite = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
+export const validFps = (v: unknown): v is number => finite(v) && (v as number) >= ILDA_FPS.min && (v as number) <= ILDA_FPS.max;
 const numbers = (v: unknown, max: number) => Array.isArray(v) && v.length <= max && v.every(finite);
 
 // 送られてきた素材の形を確かめる。おかしければ null
@@ -73,7 +88,7 @@ export function validateAsset(v: unknown): AssetData | null {
     }
     return total <= 400000 ? (d as AssetData) : null;
   }
-  if (d.kind === 'ilda' && finite(d.fps) && Array.isArray(d.frames) && d.frames.length <= 20000) {
+  if (d.kind === 'ilda' && validFps(d.fps) && Array.isArray(d.frames) && d.frames.length <= 20000) {
     for (const f of d.frames as Record<string, unknown>[]) {
       if (!f || !numbers(f.x, 70000) || !numbers(f.y, 70000) || !numbers(f.c, 70000)) return null;
       // 1点ごとに x・y・色が揃っていること

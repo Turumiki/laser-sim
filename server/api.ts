@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { isValidChannel } from '../src/core/protocol.ts';
-import { validateAsset, type AssetStore } from './assets.ts';
+import { validateAsset, validFps, type AssetStore } from './assets.ts';
 import type { Hub } from './hub.ts';
 
 export function json(res: ServerResponse, status: number, body: unknown) {
@@ -83,6 +83,15 @@ export async function handleApi({ hub, assets, info }: ApiContext, req: Incoming
   if (assetMatch) {
     const id = assetMatch[1];
     if (req.method === 'DELETE') return json(res, assets.remove(id) ? 200 : 404, { id });
+    if (req.method === 'PATCH') {
+      const body = await readJson(req, res) as { fps?: unknown } | null | undefined;
+      if (body === undefined) return;
+      if (!validFps(body?.fps)) return json(res, 400, { error: 'fps は 1〜120 の数で送ってください' });
+      const info = assets.setFps(id, body.fps);
+      if (!info) return json(res, 404, NOT_FOUND);
+      hub.broadcastAll({ type: 'assetFps', id, fps: body.fps });
+      return json(res, 200, info);
+    }
     const raw = assets.raw(id);
     if (!raw) return json(res, 404, NOT_FOUND);
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
