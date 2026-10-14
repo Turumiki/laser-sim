@@ -53,7 +53,8 @@ export function buildAssetsPanel(root: HTMLElement, store: Store) {
     showFps();
   });
 
-  root.append(el('h4', {}, '素材'), clips, el('div', { class: 'asset-tools' }, colors, fpsBox, note), input);
+  // 素材が多いと一覧が長くなるので、設定の欄は一覧の上に置く
+  root.append(el('div', { class: 'asset-head' }, el('h4', {}, '素材'), el('span', { class: 'asset-note' }, '画像の色数'), colors, fpsBox, note), clips, input);
 
   const buttons = new Map<string, HTMLButtonElement>();
   const infos = new Map<string, AssetInfo>();

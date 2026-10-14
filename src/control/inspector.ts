@@ -7,7 +7,7 @@ type Updater = (s: Readonly<Settings>) => void;
 
 const CLOSED_KEY = 'laser:inspector:closed';
 // ツールバーに出しているもの
-const IN_TOOLBAR = new Set<string>(['mode', 'output']);
+const IN_TOOLBAR = new Set<string>(['mode', 'look', 'output']);
 
 export function buildInspector(root: HTMLElement, store: Store, channel: string) {
   const updaters: Updater[] = [];
@@ -18,11 +18,12 @@ export function buildInspector(root: HTMLElement, store: Store, channel: string)
     const { pattern, output, ...rest } = DEFAULTS;
     store.set(rest);
   });
-  // 何を編集しているか（Premiereのエフェクトコントロールの見出しと同じ）。ふだんはこのチャンネル、ステップを選ぶとそのステップ
+  // シーケンスのステップを選んでいる間は、何を編集しているかを出す（Premiereのエフェクトコントロールの見出しと同じ）。
+  // ふだんのチャンネル名は「このレーザー」の見出しに出ているので、ここには出さない
   const target = el('span', { class: 'target' });
   root.append(el('div', { class: 'inspector-head' }, target, el('span', { class: 'grow' }), resetAll));
   const setTarget = (label: string | null) => {
-    target.textContent = label ?? `ch: ${channel}`;
+    target.textContent = label ?? '';
     target.classList.toggle('step', !!label);
     target.title = label ? 'シーケンスのステップを編集中。絵柄やレーザー機の変更は、このステップに入る。ステップをもう一度クリックで外れる' : '';
   };

@@ -210,8 +210,9 @@ button, input, select { font: inherit; color: inherit; }
 .clip .del { flex: none; padding: 2px 4px; margin-right: -4px; color: var(--dim); font-size: 10px; }
 .clip .del:hover, .clip .del.armed { color: var(--rec); }
 .clip.add { color: var(--dim); border-style: dashed; }
-.asset-tools { display: flex; align-items: center; gap: 8px; margin: -4px 0 8px; }
-.asset-tools .tb { height: 20px; font-size: 11px; }
+.asset-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+#patterns .asset-head h4 { margin: 0; }
+.asset-head .tb { height: 20px; font-size: 11px; }
 .asset-note { color: var(--dim); font-size: 11px; }
 .asset-fps { display: inline-flex; align-items: center; gap: 6px; }
 .asset-fps[hidden] { display: none; }
