@@ -74,7 +74,7 @@ curl -X POST http://localhost:8765/api/show -d '{"action":"stop"}'
 curl -X POST http://localhost:8765/api/show -d '{"action":"playAll","id":"custom","channels":["arena-l","arena-c","arena-r"]}'
 ```
 
-素材の一覧・取得・コマの速さの変更・削除（パターン名は `asset:<id>`）:
+素材の一覧・使い方・コマの速さの変更・削除（パターン名は `asset:<id>`）:
 
 ```sh
 curl http://localhost:8765/api/assets
