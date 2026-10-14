@@ -30,7 +30,7 @@ export class Engine {
     this.sim.update(dt);
   }
 
-  // size を渡すと、出力サイズの代わりにそのサイズで描く。look を渡すと用途の設定より優先する
+  // size を渡すと、出力サイズの代わりにそのサイズで描く。look を渡すとポストエフェクトの設定より優先する
   render(size?: readonly [number, number], look?: Look) {
     const s = this.store.get();
     const linear = (look ?? s.look) === 'source';

@@ -16,10 +16,8 @@ export function buildToolbar(root: HTMLElement, store: Store, recorder: Recorder
   clean.addEventListener('click', () => store.set({ mode: 'clean' }));
   scan.addEventListener('click', () => store.set({ mode: 'scan' }));
 
-  const display = el('button', { class: 'tb', title: 'そのまま画面に映す見た目。強い所は白く飛び、にじみが付く' }, '表示用');
-  const source = el('button', { class: 'tb', title: 'ライトのクッキー（光の模様を決めるテクスチャ）やボリュームライトの元にする映像。白飛び・にじみなし、明るさは光量に比例' }, 'クッキー用');
-  display.addEventListener('click', () => store.set({ look: 'display' }));
-  source.addEventListener('click', () => store.set({ look: 'source' }));
+  const post = el('button', { class: 'tb', title: 'オン: 強い所が白く飛び、にじみが付く（配信・モニター向け）。オフ: 光の量をそのまま書き出す（Unityなどのライトのクッキー・ボリュームライト向け）' }, 'ポストエフェクト');
+  post.addEventListener('click', () => store.set({ look: store.get().look === 'display' ? 'source' : 'display' }));
 
   const size = el('select', { class: 'tb', title: '出力サイズ' });
   for (const k of Object.keys(OUTPUT_SIZES)) size.append(new Option(k.replace('x', ' × '), k));
@@ -81,7 +79,7 @@ export function buildToolbar(root: HTMLElement, store: Store, recorder: Recorder
     play,
     el('span', { class: 'sep' }),
     el('span', { class: 'seg' }, clean, scan),
-    el('span', { class: 'seg' }, display, source),
+    post,
     size,
     el('span', { class: 'grow' }),
     dur, exp, rec, time,
@@ -95,8 +93,7 @@ export function buildToolbar(root: HTMLElement, store: Store, recorder: Recorder
     play.classList.toggle('on', s.paused);
     clean.classList.toggle('on', s.mode === 'clean');
     scan.classList.toggle('on', s.mode === 'scan');
-    display.classList.toggle('on', s.look === 'display');
-    source.classList.toggle('on', s.look === 'source');
+    post.classList.toggle('on', s.look === 'display');
     size.value = s.output;
   };
   store.subscribe(refresh);

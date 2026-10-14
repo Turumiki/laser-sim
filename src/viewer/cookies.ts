@@ -8,7 +8,7 @@ interface Cookie {
   texture: CanvasTexture;
 }
 
-// チャンネルごとの「Unityに渡すのと同じ映像」（クッキー用）。レーザーの描画範囲（正方形）をクッキーとして使う。
+// チャンネルごとの「Unityに渡すのと同じ映像」（ポストエフェクトなし）。レーザーの描画範囲（正方形）をクッキーとして使う。
 // シミュレーションは3Dビューアのものを使い回すので、ベクター表示と同じ動きになる
 export class Cookies {
   private map = new Map<Simulation, Cookie>();

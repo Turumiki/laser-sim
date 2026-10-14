@@ -69,8 +69,8 @@ void main() {
 }`;
 
 // 積んだ光量を映像に変換する。
-// 表示用: 強く当たった所は白く飛ぶ（カメラで撮ったレーザーの芯と同じ）
-// クッキー用: 光量に比例した値をそのまま sRGB で書く。白に寄せず、上限で頭打ちにするだけ。
+// ポストエフェクトあり: 強く当たった所は白く飛ぶ（カメラで撮ったレーザーの芯と同じ）
+// なし: 光量に比例した値をそのまま sRGB で書く。白に寄せず、上限で頭打ちにするだけ。
 //   係数は、1本の線（全出力で描いたシート）が飽和せず、止まったビームは頭打ちになる程度
 const TONE_FS = `#version 300 es
 precision highp float;
@@ -97,7 +97,7 @@ export interface DrawParams {
   sigmaG: number;
   glow: number;
   exposure: number;
-  // クッキー用（光量に比例した値）で書く
+  // ポストエフェクトなし（光量に比例した値）で書く
   linear: boolean;
   // この矩形の外には描かない [x, y, w, h]（上が原点）
   clip: readonly [number, number, number, number] | null;

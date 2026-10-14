@@ -104,7 +104,7 @@ export function buildRigPanel(panel: HTMLElement, vs: ViewerSettings, assign: Ch
 
   // --- 表示 ---
   const view = section('view', '表示');
-  seg(view, '描き方', '点データ: ビームを点データから直接出す（実機に近い）。クッキー: 出力と同じ映像（クッキー用）を、スポットライトのクッキーとして投影する（Unityなどで起きることの再現）',
+  seg(view, '描き方', '点データ: ビームを点データから直接出す（実機に近い）。クッキー: 出力と同じ映像（ポストエフェクトなし）を、スポットライトのクッキーとして投影する（Unityなどで起きることの再現）',
     RENDER_MODES, vs.render, v => { vs.render = v; rebuild(); });
   const qualities = (Object.keys(QUALITY) as Quality[]).map(id => ({ id, label: QUALITY[id].label }));
   seg(view, '画質', '高: 高解像度・アンチエイリアスあり・ヘイズのむらも細かく描く。中: 等倍の解像度で、アンチエイリアスなし。低: 解像度を下げ、ブルームも切って軽くする（スマホ向け）',
