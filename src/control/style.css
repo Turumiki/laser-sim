@@ -27,7 +27,7 @@ button, input, select { font: inherit; color: inherit; }
   display: grid;
   height: 100vh;
   /* 中身が横に長くても（タイムラインなど）右の列が押し出されないよう、左の列は minmax(0, 1fr) */
-  grid-template: "tool tool" 30px "view insp" 1fr "pat insp" 172px "stat stat" 20px / minmax(0, 1fr) 300px;
+  grid-template: "tool tool" 30px "view insp" 1fr "pat insp" var(--bottom-h, 172px) "stat stat" 20px / minmax(0, 1fr) 300px;
   gap: 1px;
   background: var(--line);
 }
@@ -192,7 +192,10 @@ button, input, select { font: inherit; color: inherit; }
 .presets .tb { height: 18px; padding: 0 6px; font-size: 11px; }
 
 /* パターン */
-#bottom { grid-area: pat; display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--bg1); }
+#bottom { grid-area: pat; position: relative; display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--bg1); }
+/* 上端の高さ調整。グリッドの線（1px）の上にかぶせて、掴みやすい幅にする */
+.resize-handle { position: absolute; left: 0; right: 0; top: -4px; height: 7px; z-index: 2; cursor: row-resize; touch-action: none; }
+.resize-handle:hover, .resize-handle.dragging { background: linear-gradient(transparent 3px, var(--accent) 3px, var(--accent) 4px, transparent 4px); }
 .tabs { display: flex; gap: 1px; background: var(--line); border-bottom: 1px solid var(--line); }
 .tabs button { height: 22px; padding: 0 12px; border: 0; background: var(--bg2); color: var(--dim); font-size: 11px; }
 .tabs button.on { background: var(--bg1); color: var(--text); }
@@ -253,6 +256,7 @@ button, input, select { font: inherit; color: inherit; }
   #toolbar .grow { flex-basis: 100%; height: 0; }
   #viewer { flex: 0 0 42vh; position: sticky; top: 0; z-index: 1; }
   #bottom { order: 1; }
+  .resize-handle { display: none; }
   .pane { overflow: visible; }
   #inspector { order: 2; }
   #status { order: 3; min-height: 22px; }

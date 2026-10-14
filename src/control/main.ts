@@ -6,6 +6,7 @@ import type { SyncStatus } from '../sync/client';
 import { buildInspector } from './inspector';
 import { buildPatternGrid } from './pattern-grid';
 import { Recorder } from './recorder';
+import { attachBottomResize } from './resize';
 import { buildSequence } from './sequence';
 import { buildTabs } from './tabs';
 import { buildToolbar } from './toolbar';
@@ -23,6 +24,7 @@ const sequence = buildSequence($('sequence'), store, msg => link.show(msg), () =
 link.onShow(info => sequence.onShow(info));
 buildPatternGrid($('patterns'), store);
 buildTabs($('bottom'));
+attachBottomResize($('app'), $('bottom'));
 fastTooltips();
 preventDoubleTapZoom();
 attachViewer($('viewer'), canvas, store);
