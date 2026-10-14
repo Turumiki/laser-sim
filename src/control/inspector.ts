@@ -1,7 +1,7 @@
 import { DEFAULTS, GROUPS, PARAMS, PRESETS, SHARED_GROUPS, type NumberParam, type ParamDef, type Settings } from '../core/params';
-import { loadLocal, saveLocal } from '../core/persist';
+import { loadLocal, saveLocal } from '../browser/persist';
 import type { Store } from '../core/store';
-import { el } from './dom';
+import { el } from '../browser/dom';
 
 type Updater = (s: Readonly<Settings>) => void;
 

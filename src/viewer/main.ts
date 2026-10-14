@@ -7,12 +7,13 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { DEFAULTS, sanitize } from '../core/params';
-import { loadLocal, saveLocal } from '../core/persist';
+import { useServerAssets } from '../browser/assets';
+import { loadLocal, saveLocal } from '../browser/persist';
 import { Store } from '../core/store';
 import { Simulation } from '../engine/simulation';
 import { connectSync } from '../sync/client';
 import { isValidChannel } from '../core/protocol';
-import { fastTooltips } from '../control/tooltip';
+import { fastTooltips } from '../browser/tooltip';
 import { Cookies } from './cookies';
 import { VolumePass, type VolumeProjector } from './volume';
 import { HAZE_LAYER, HazePass } from './haze-pass';
@@ -20,10 +21,11 @@ import { ScenePass } from './scene-pass';
 import { EYE_GAIN } from '../core/color';
 import { Beams, type Projector, type Rig, type Source } from './beams';
 import { ROOMS, setEdgeLevel, Surfaces, TARGETS, type TargetKind } from './surfaces';
-import { preventDoubleTapZoom } from '../control/dom';
+import { preventDoubleTapZoom } from '../browser/dom';
 import { arenaLayout } from './venues';
 
 // レーザーが空間にどう出るかを3Dで見る（隠し機能）。設定は操作画面と同期する
+useServerAssets();
 const params = new URLSearchParams(location.search);
 const channel = params.get('ch') || 'default';
 

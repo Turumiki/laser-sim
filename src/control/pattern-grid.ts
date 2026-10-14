@@ -1,7 +1,7 @@
 import { listPatterns, type PatternCategory } from '../core/patterns';
 import type { Store } from '../core/store';
 import { buildAssetsPanel } from './assets-panel';
-import { el } from './dom';
+import { el } from '../browser/dom';
 
 const CATEGORIES: { id: PatternCategory; label: string }[] = [
   { id: 'line', label: '線' },

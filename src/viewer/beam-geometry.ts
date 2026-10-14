@@ -1,11 +1,10 @@
 import type { Settings } from '../core/params';
-import { EYE_GAIN, MAX_MIRROR } from '../core/color';
+import { EYE_GAIN } from '../core/color';
+import { clampMirror } from '../core/mirror';
 import type { HitTarget } from './hits';
 
 // ビームを3Dの形（光の膜・ビーム・物に当たった所の光）にする計算。three.js を使わないので、Worker（別スレッド）でも動く。
 // 隣り合う2点の間は光の膜（三角形）、その場に留まる点は1本のビーム（線）にする
-
-const clampMirror = (v: number) => Math.max(-MAX_MIRROR, Math.min(MAX_MIRROR, v));
 
 // 当たり方を覚えておく格子の細かさ（1辺）。最大走査角40°なら1マス 0.2°くらい
 const GRID = 256;

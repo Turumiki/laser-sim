@@ -1,4 +1,4 @@
-import { loadLocal, saveLocal } from '../core/persist';
+import { loadLocal, saveLocal } from '../browser/persist';
 
 const KEY = 'laser:tab';
 

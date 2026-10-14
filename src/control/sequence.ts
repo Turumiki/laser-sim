@@ -1,11 +1,11 @@
 import { BPM_RANGE, DEFAULTS, sanitize } from '../core/params';
 import { getPattern } from '../core/patterns';
-import { loadLocal, saveLocal } from '../core/persist';
+import { loadLocal, saveLocal } from '../browser/persist';
 import { locate, showLength, STEP_BEATS, STEP_KEYS, stepFrom, type Show } from '../core/show';
 import { BUILTIN_SHOWS } from '../core/shows';
 import type { Store } from '../core/store';
 import type { ShowInfo } from '../core/protocol';
-import { el } from './dom';
+import { el } from '../browser/dom';
 import { attachExport } from './export-button';
 
 type Send = (msg: Record<string, unknown>) => void;

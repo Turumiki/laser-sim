@@ -2,7 +2,7 @@ import { assetPattern, forgetAsset, primeAsset, type AssetData, type AssetInfo }
 import { buildFrame } from '../core/build';
 import { Frame } from '../core/frame';
 import type { Store } from '../core/store';
-import { el } from './dom';
+import { el } from '../browser/dom';
 
 const ACCEPT = '.png,.jpg,.jpeg,.webp,.gif,.svg,.ild';
 const KIND_LABEL: Record<AssetData['kind'], string> = { vector: '画像', ilda: 'ILDA' };

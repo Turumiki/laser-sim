@@ -1,9 +1,12 @@
 import { DEFAULTS, sanitize } from '../core/params';
-import { loadLocal, saveLocal } from '../core/persist';
+import { useServerAssets } from '../browser/assets';
+import { loadLocal, saveLocal } from '../browser/persist';
 import { Store } from '../core/store';
 import { Engine } from '../engine/engine';
 import { FrameTimer, startLoop } from '../engine/loop';
 import { connectSync } from '../sync/client';
+
+useServerAssets();
 
 const params = new URLSearchParams(location.search);
 const channel = params.get('ch') || 'default';

@@ -34,17 +34,22 @@ export const ASSET_PREFIX = 'asset:';
 export const isAsset = (pattern: string) => pattern.startsWith(ASSET_PREFIX);
 export const assetPattern = (id: string) => ASSET_PREFIX + id;
 
-// 読み込み済みの素材。無ければサーバーから取ってくる（取れるまでは何も描かない）
+// 読み込み済みの素材。無ければ取ってくる（取れるまでは何も描かない）
 const cache = new Map<string, Asset | 'loading' | 'missing'>();
+// 素材の取り寄せ方。画面ではサーバーから取る（browser/assets.ts）。決めていなければ取りに行かない
+let fetcher: ((id: string) => Promise<Asset>) | null = null;
+
+export function setAssetFetcher(fn: (id: string) => Promise<Asset>) {
+  fetcher = fn;
+}
 
 function load(id: string): Asset | null {
   const hit = cache.get(id);
   if (hit && typeof hit === 'object') return hit;
-  if (!hit && typeof fetch === 'function') {
+  if (!hit && fetcher) {
     cache.set(id, 'loading');
-    fetch(`/api/assets/${encodeURIComponent(id)}`)
-      .then(r => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-      .then((a: Asset) => cache.set(id, a))
+    fetcher(id)
+      .then(a => cache.set(id, a))
       .catch(() => cache.set(id, 'missing'));
   }
   return null;

@@ -1,7 +1,7 @@
 import { OUTPUT_SIZES } from '../core/params';
 import { isValidChannel } from '../core/protocol';
 import type { Store } from '../core/store';
-import { el } from './dom';
+import { el } from '../browser/dom';
 import { attachExport } from './export-button';
 import type { Recorder } from './recorder';
 

@@ -1,7 +1,7 @@
 import type { Frame } from '../core/frame';
 import type { Scanner } from '../core/scanner';
 import type { Settings } from '../core/params';
-import { pincushion } from '../core/color';
+import { pincushion } from '../core/mirror';
 
 // 1本の線分 = x0 y0 x1 y1 / エネルギー r g b / グローの有無
 export const STRIDE = 9;

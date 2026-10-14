@@ -1,6 +1,6 @@
 import { outputSize } from '../core/params';
 import type { Store } from '../core/store';
-import { el } from './dom';
+import { el } from '../browser/dom';
 
 // ビューア。プレビューを枠に収め、マウスで位置・サイズ・角度を動かす
 export function attachViewer(root: HTMLElement, canvas: HTMLCanvasElement, store: Store) {

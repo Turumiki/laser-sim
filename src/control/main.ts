@@ -1,19 +1,22 @@
 import './style.css';
 import { DEFAULTS, sanitize } from '../core/params';
-import { loadLocal, saveLocal } from '../core/persist';
+import { useServerAssets } from '../browser/assets';
+import { loadLocal, saveLocal } from '../browser/persist';
 import { Store } from '../core/store';
 import { Engine } from '../engine/engine';
 import { FrameTimer, startLoop } from '../engine/loop';
 import { connectSync, type SyncStatus } from '../sync/client';
 import { buildInspector } from './inspector';
 import { buildPatternGrid } from './pattern-grid';
-import { preventDoubleTapZoom } from './dom';
+import { preventDoubleTapZoom } from '../browser/dom';
 import { buildSequence } from './sequence';
 import { buildTabs } from './tabs';
-import { fastTooltips } from './tooltip';
+import { fastTooltips } from '../browser/tooltip';
 import { Recorder } from './recorder';
 import { buildToolbar } from './toolbar';
 import { attachViewer } from './viewer';
+
+useServerAssets();
 
 const $ = (id: string) => document.getElementById(id)!;
 
