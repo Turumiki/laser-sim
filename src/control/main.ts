@@ -20,7 +20,7 @@ const { channel, store, engine, link, timer, run } = openScreen('control', canva
 const recorder = new Recorder(canvas);
 buildToolbar($('toolbar'), store, recorder, channel);
 const inspector = buildInspector($('inspector'), store, channel);
-const sequence = buildSequence($('sequence'), store, msg => link.show(msg), () => link.time.serverNow(), label => inspector.setTarget(label));
+const sequence = buildSequence($('sequence'), store, channel, msg => link.show(msg), () => link.time.serverNow(), label => inspector.setTarget(label));
 link.onShow(info => sequence.onShow(info));
 buildPatternGrid($('patterns'), store);
 buildTabs($('bottom'));

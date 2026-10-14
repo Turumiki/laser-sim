@@ -2,6 +2,7 @@ import { OUTPUT_SIZES } from '../core/params';
 import { isValidChannel } from '../core/protocol';
 import type { Store } from '../core/store';
 import { el } from '../browser/dom';
+import { switchChannel } from './channel';
 import { attachExport } from './export-button';
 import type { Recorder } from './recorder';
 
@@ -55,10 +56,7 @@ export function buildToolbar(root: HTMLElement, store: Store, recorder: Recorder
       next = prompt('チャンネル名（英数字と _ - だけ）') ?? '';
       if (!isValidChannel(next)) { chSel.value = channel; return; }
     }
-    if (next === channel) return;
-    const q = new URLSearchParams(location.search);
-    if (next === 'default') q.delete('ch'); else q.set('ch', next);
-    location.search = q.toString();
+    if (next !== channel) switchChannel(next);
   });
 
   const openOut = el('button', { class: 'tb', title: '出力画面を別ウィンドウで開く' }, '出力を開く');

@@ -280,6 +280,8 @@ button, input, select { font: inherit; color: inherit; }
 
 /* シーケンス */
 #sequence { display: flex; flex-direction: column; gap: 6px; }
+/* 中身は縮めず、入り切らなければ枠ごとスクロールする */
+#sequence > * { flex: none; }
 #sequence[hidden] { display: none; }
 .seq-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 24px; }
 .seq-row[hidden], .seq-group[hidden] { display: none; }
@@ -336,3 +338,18 @@ button, input, select { font: inherit; color: inherit; }
   pointer-events: none;
 }
 .tip[hidden] { display: none; }
+
+/* シーケンス: チャンネルごとのトラック（全体を見渡す） */
+.tracks { display: flex; flex-direction: column; gap: 2px; overflow-x: auto; padding: 6px 0 2px; border-top: 1px solid var(--bg3); }
+.tracks[hidden] { display: none; }
+.track { display: flex; align-items: center; min-height: 18px; cursor: pointer; }
+.track:hover .track-label { color: var(--text); }
+.track.current { cursor: default; }
+.track-label { position: sticky; left: 0; z-index: 1; flex: 0 0 150px; display: flex; gap: 6px; align-items: baseline; padding: 0 6px; background: var(--bg1); color: var(--dim); font-size: 11px; white-space: nowrap; overflow: hidden; }
+.track.current .track-label { color: var(--text); border-left: 2px solid var(--accent); }
+.track-ch { font-weight: 600; }
+.track-label small { overflow: hidden; text-overflow: ellipsis; }
+.track-lane { position: relative; flex: none; height: 12px; background: var(--bg2); }
+.track-step { position: absolute; top: 0; bottom: 0; opacity: 0.75; }
+.track.current .track-step { opacity: 1; }
+.track-head { position: absolute; top: -2px; bottom: -2px; width: 2px; background: #fff; }

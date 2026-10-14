@@ -73,7 +73,11 @@ export class Hub {
     let set = this.clients.get(ch);
     if (!set) this.clients.set(ch, set = new Set());
     set.add(ws);
-    ws.on('close', () => set.delete(ws));
+    // 誰もいなくなったチャンネルは、つながっている一覧から外す
+    ws.on('close', () => {
+      set.delete(ws);
+      if (!set.size && this.clients.get(ch) === set) this.clients.delete(ch);
+    });
   }
 
   private send(ch: string, msg: string) {

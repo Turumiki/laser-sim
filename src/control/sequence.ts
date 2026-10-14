@@ -7,6 +7,7 @@ import { BUILTIN_SHOWS } from '../core/shows';
 import type { Store } from '../core/store';
 import { attachExport } from './export-button';
 import { fmtTime, patternName, playhead, Timeline } from './sequence-timeline';
+import { SequenceTracks } from './sequence-tracks';
 
 type Send = (msg: Record<string, unknown>) => void;
 
@@ -19,7 +20,7 @@ const NEW_STEP_BEATS = 8;
 // シーケンス（ショー）のタブ。
 // 1行目: 再生まわり / 2行目: 編集（カスタムのときだけ） / タイムライン: 拍数に比例した長さのブロック
 // onEdit: 設定パネルで編集しているステップ（なければ null）
-export function buildSequence(root: HTMLElement, store: Store, send: Send, serverNow: () => number, onEdit: (label: string | null) => void = () => {}) {
+export function buildSequence(root: HTMLElement, store: Store, channel: string, send: Send, serverNow: () => number, onEdit: (label: string | null) => void = () => {}) {
   let info: ShowInfo | null = null;
   let selected = loadLocal<string>(SEQ_KEY) ?? BUILTIN_SHOWS[0].id;
   let selStep = -1;
@@ -142,7 +143,9 @@ export function buildSequence(root: HTMLElement, store: Store, send: Send, serve
     }
     render();
   });
-  root.append(transport, customTools, builtinTools, timeline.root);
+  // ほかのチャンネルも含めた全体（チャンネルが2つ以上のとき）。編集はこのチャンネルだけなので、下に置く
+  const tracks = new SequenceTracks(channel, serverNow);
+  root.append(transport, customTools, builtinTools, timeline.root, tracks.root);
 
   function render() {
     const show = current();
@@ -222,6 +225,7 @@ export function buildSequence(root: HTMLElement, store: Store, send: Send, serve
     onShow(next: ShowInfo) {
       info = next;
       render();
+      tracks.refresh();
     },
     nowPlaying,
   };
