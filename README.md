@@ -4,7 +4,7 @@ ILDAレーザー風の映像を作るツール。OBSのブラウザソースで�
 
 ## 必要なもの
 
-[Node.js](https://nodejs.org/) 22.18 以上（迷ったら LTS 版）
+[Node.js](https://nodejs.org/) 22.18 以上（LTS 推奨）
 
 ## 起動
 
