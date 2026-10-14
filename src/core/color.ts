@@ -25,6 +25,6 @@ export function hexToRgb(hex: string, out: Rgb): Rgb {
   return out;
 }
 
-// 色ごとの見かけの明るさ（緑を1とする）。一般的なRGB機の出力と、目の感度（比視感度）から出した値
-// 赤 638nm 0.8W × 0.18、緑 520nm 0.8W × 0.71、青 450nm 1.4W × 0.038
-export const EYE_GAIN: readonly [number, number, number] = [0.25, 1, 0.09];
+// 色ごとの見かけの明るさ（緑を1とする）。30W級のフルカラー機の出力と、目の感度（CIEの比視感度）から出した値
+// 赤 637nm 7.5W × 0.20、緑 525nm 10W × 0.79、青 455nm 13W × 0.049
+export const EYE_GAIN: readonly [number, number, number] = [0.19, 1, 0.08];

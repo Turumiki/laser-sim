@@ -168,12 +168,16 @@ export const DEFAULTS: Readonly<Settings> = {
   size: 0.85,
   angle: 0,
   rotSpeed: 0,
+  // レーザー機は、ドームやアリーナのツアーで使う30W級のフルカラー機に合わせる
+  // （Kvant Spectrum 30W級のカタログ値: スキャナ 40kpps @ 8°、最大走査角 60°）。
+  // pps はショーのデータでよく使う 30kpps
   pps: 30000,
-  scannerK: 30,
-  // 30Kのスキャナを30kppsでILDAテスト風に合わせた値（円が四角に接する）
+  scannerK: 40,
+  // スキャナの性能どおりの pps でILDAテストパターンを描いたとき、円が四角に接するように合わせた値
   damping: 0.6,
-  colorShift: 80,
-  scanAngle: 40,
+  // ミラーの遅れに合わせる。遅れはスキャナが速いほど短いので、30Kで合わせた 80µs を 40K に比例させた値
+  colorShift: 60,
+  scanAngle: 60,
   pincushion: true,
   density: 0.025,
   animSpeed: 1,

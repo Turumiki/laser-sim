@@ -150,7 +150,7 @@ export function buildRigPanel(panel: HTMLElement, vs: ViewerSettings, assign: Ch
   // --- 見え方（目・カメラ） ---
   const look = section('look', '見え方');
   range(look, 'bloom', 'ブルーム', '明るい所のにじみ（カメラやレンズでの光のあふれ）');
-  check(look, 'eye', '目の感度', '人の目の色ごとの感度で見る。目は緑に敏感で、同じ出力でも赤や青は暗く見える（一般的なRGB機: 赤638nm・緑520nm・青450nm）', () => act.eye());
+  check(look, 'eye', '目の感度', '人の目の色ごとの感度で見る。目は緑に敏感で、同じ出力でも赤や青は暗く見える（30W級のフルカラー機: 赤637nm・緑525nm・青455nm）', () => act.eye());
   check(look, 'rolling', 'ローリング', 'スマホや一般的なビデオカメラで撮ったときの写り方。画面を上の行から順に時間をずらして撮るので、速く動くレーザーは曲がったり縞になったりして写る。スキャンのチャンネルを「点データ」で描いているときだけ効く', rebuild);
   if (vs.rolling) range(look, 'readout', '読み出し時間', '画面の上から下まで読み出すのにかかる時間。スマホでだいたい10〜30ms', ' ms');
   if (vs.render === 'video') range(look, 'flat', '距離減衰の補正', 'クッキーの描き方で、遠くの減衰を弱める（1で距離に反比例）。Unityのライトの減衰カーブを平らにしたときの見え方');
