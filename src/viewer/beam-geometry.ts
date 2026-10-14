@@ -1,7 +1,7 @@
 import type { Settings } from '../core/params';
 import { EYE_GAIN } from '../core/color';
 import { clampMirror } from '../core/mirror';
-import type { HitTarget } from './hits';
+import { cross, dot, sub, type HitTarget } from './hits';
 
 // ビームを3Dの形（光の膜・ビーム・物に当たった所の光）にする計算。three.js を使わないので、Worker（別スレッド）でも動く。
 // 隣り合う2点の間は光の膜（三角形）、その場に留まる点は1本のビーム（線）にする
@@ -134,6 +134,36 @@ export class BeamGeometry {
   private pincushion = true;
   // 色ごとの見かけの明るさ
   private gain: readonly number[] = [1, 1, 1];
+
+  // 台ごとの格子。会場・置き場所・向き・振れる範囲が変わったら作り直す
+  private grids: (HitGrid | undefined)[] = [];
+  private grid: HitGrid | null = null;
+
+  // 線分1本ぶんの作業用。隣の線分と端を共有するので、1点につき1回だけ計算して使い回す
+  // 両端の当たる位置（a, b）・奥行き（ta, tb）・当たった面（ia, ib）。cached は b を計算した点の番号
+  private a = [0, 0, 0];
+  private b = [0, 0, 0];
+  private ta = 0;
+  private tb = 0;
+  private ia = -1;
+  private ib = -1;
+  private cached = -1;
+  // 最後に hit() で当たった面
+  private lastId = -1;
+  // 線分の両端（点の座標）
+  private p0 = [0, 0];
+  private p1 = [0, 0];
+  // edge(): 縁の手前（ea）と向こう（eb）の当たる位置。edged はこの線分で調べ済みか
+  private ea = [0, 0, 0];
+  private eb = [0, 0, 0];
+  private tmp = [0, 0, 0];
+  private edged = false;
+  private edgeOk = false;
+  private edgeStrict = false;
+  // bend(): へこんだ角の上の点 c。cornered はこの線分で調べ済みか
+  private c = [0, 0, 0];
+  private cornerOk = false;
+  private cornered = false;
 
   constructor(hits: HitTarget) {
     this.hits = hits;
@@ -284,10 +314,6 @@ export class BeamGeometry {
     return out;
   }
 
-  // 台ごとの格子。会場・置き場所・向き・振れる範囲が変わったら作り直す
-  private grids: (HitGrid | undefined)[] = [];
-  private grid: HitGrid | null = null;
-
   private use(p: Projector, index: number, s: BeamSettings) {
     this.proj = p;
     this.cached = -1;
@@ -326,16 +352,6 @@ export class BeamGeometry {
     const f = this.grid?.faces;
     return strict || !f || !f[ia] || !f[ib] || !this.hits.concave(ia, ib);
   }
-  private lastId = -1;
-  private ia = -1;
-  private ib = -1;
-
-  // 線分の両端の当たる位置と奥行き。隣の線分と端を共有するので、1点につき1回だけ計算して使い回す
-  private a = [0, 0, 0];
-  private b = [0, 0, 0];
-  private ta = 0;
-  private tb = 0;
-  private cached = -1;
 
   // 点 (x0,y0) → (x1,y1) の両端を a / b に用意する。key は前の点の番号（同じなら前回の b を a として使う）
   private ends(key: number, x0: number, y0: number, x1: number, y1: number, next: number) {
@@ -356,16 +372,8 @@ export class BeamGeometry {
   }
 
   // 両端が別々の物に当たっているとき、境目の手前（ea）と向こう（eb）の当たる位置。
-  // 線分を二分探索して縁を探す。見つからなければ false
-  private p0 = [0, 0];
-  private p1 = [0, 0];
-  private ea = [0, 0, 0];
-  private eb = [0, 0, 0];
-  private tmp = [0, 0, 0];
-  private edged = false;
-  private edgeOk = false;
+  // 線分を二分探索して縁を探す。見つからなければ false。
   // strict: へこんだ角も境目として扱う（角の点が出せなかったとき用）
-  private edgeStrict = false;
   private edge(strict = false) {
     if (this.edged && this.edgeStrict === strict) return this.edgeOk;
     this.edged = true;
@@ -389,9 +397,6 @@ export class BeamGeometry {
 
   // へこんだ角をまたぐとき、膜の平面（光源・a・b を通る）と2つの面が交わる点 c（角の上の点）を出す。
   // a → c → b と折り曲げれば、面の上を正しくたどる。出せなければ false
-  private c = [0, 0, 0];
-  private cornerOk = false;
-  private cornered = false;
   private bend() {
     if (this.cornered) return this.cornerOk;
     this.cornered = true;
@@ -399,10 +404,10 @@ export class BeamGeometry {
     const A = this.hits.plane(this.ia), B = this.hits.plane(this.ib);
     if (!A || !B) return false;
     const o = this.proj.pos, a = this.a, b = this.b;
-    const ua = [a[0] - o[0], a[1] - o[1], a[2] - o[2]], ub = [b[0] - o[0], b[1] - o[1], b[2] - o[2]];
+    const ua = sub(a, o), ub = sub(b, o);
     // 膜の平面
-    const ns = [ua[1] * ub[2] - ua[2] * ub[1], ua[2] * ub[0] - ua[0] * ub[2], ua[0] * ub[1] - ua[1] * ub[0]];
-    const nps = ns[0] * o[0] + ns[1] * o[1] + ns[2] * o[2];
+    const ns = cross(ua, ub);
+    const nps = dot(ns, o);
     // 3枚の平面の交点（クラメルの公式）
     const m = [A.n, B.n, ns], r = [A.np, B.np, nps];
     const det3 = (c0: number[], c1: number[], c2: number[]) =>
@@ -416,10 +421,8 @@ export class BeamGeometry {
     c[1] = det3(col(0), r, col(2)) / D;
     c[2] = det3(col(0), col(1), r) / D;
     // 角の点が a と b の間（光源から見て2本のビームの間）にあるか
-    const uc = [c[0] - o[0], c[1] - o[1], c[2] - o[2]];
-    const cross = (p: number[], q: number[]) => [p[1] * q[2] - p[2] * q[1], p[2] * q[0] - p[0] * q[2], p[0] * q[1] - p[1] * q[0]];
-    const dotp = (p: number[], q: number[]) => p[0] * q[0] + p[1] * q[1] + p[2] * q[2];
-    if (dotp(cross(ua, uc), ns) < 0 || dotp(cross(uc, ub), ns) < 0) return false;
+    const uc = sub(c, o);
+    if (dot(cross(ua, uc), ns) < 0 || dot(cross(uc, ub), ns) < 0) return false;
     // 角の点が、2つの面が実際に接している所（両方の面の上）にあるか。外れていれば、間に別の物や隙間がある
     if (!this.hits.contains(this.ia, c, 0.02) || !this.hits.contains(this.ib, c, 0.02)) return false;
     this.cornerOk = true;

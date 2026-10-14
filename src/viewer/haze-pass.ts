@@ -1,33 +1,31 @@
 import {
   AdditiveBlending, Color, HalfFloatType, LinearFilter, ShaderMaterial, Vector2, WebGLRenderTarget,
-  type Camera, type Mesh, type Texture, type WebGLRenderer,
+  type BufferGeometry, type Camera, type Mesh, type Texture, type WebGLRenderer,
 } from 'three';
 import { FullScreenQuad, Pass } from 'three/examples/jsm/postprocessing/Pass.js';
-import type { HazeUniforms } from './beams';
+import { HAZE_LAYER, type HazeUniforms } from './haze-shader';
 
 // 光の膜は、画面とは別の粗いバッファに描いてから、画面に足す。
 // 膜はもともとぼんやりした光なので、高精細な画面（Retinaなど）では見た目の解像度で描いても違いが分からない。
 // 何枚も重なる膜の計算が、画素の数のぶん（2倍の画面なら4分の1に）軽くなる。
 // 壁や物の手前で光を止める判定は、元の画面の奥行きをそのまま読んで行う
 
-// 膜だけを載せる層。普段の描画（RenderPass）には入らない。VRで使う層（1・2）とは別にする
-export const HAZE_LAYER = 5;
-
 export class HazePass extends Pass {
   // 元の画面に対する、膜を描くバッファの大きさの割合
   scale = 1;
   private target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, depthBuffer: false });
   private quad: FullScreenQuad;
+  private copyMat: ShaderMaterial;
   private res = new Vector2();
   private size = new Vector2(1, 1);
   private clearColor = new Color();
 
   // depth: 会場の奥行き（ScenePass のもの）
-  constructor(private mesh: Mesh, private camera: Camera, private haze: HazeUniforms, private depth: () => Texture | null) {
+  constructor(private mesh: Mesh<BufferGeometry, ShaderMaterial>, private camera: Camera, private haze: HazeUniforms, private depth: () => Texture | null) {
     super();
     this.needsSwap = false;
     this.target.texture.minFilter = this.target.texture.magFilter = LinearFilter;
-    this.quad = new FullScreenQuad(new ShaderMaterial({
+    this.copyMat = new ShaderMaterial({
       uniforms: { tHaze: { value: this.target.texture } },
       vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
       fragmentShader: 'uniform sampler2D tHaze; varying vec2 vUv; void main() { gl_FragColor = vec4(texture(tHaze, vUv).rgb, 1.0); }',
@@ -35,7 +33,8 @@ export class HazePass extends Pass {
       transparent: true,
       depthTest: false,
       depthWrite: false,
-    }));
+    });
+    this.quad = new FullScreenQuad(this.copyMat);
   }
 
   setSize(width: number, height: number) {
@@ -50,7 +49,7 @@ export class HazePass extends Pass {
 
   render(renderer: WebGLRenderer, _writeBuffer: WebGLRenderTarget, readBuffer: WebGLRenderTarget) {
     if (!this.mesh.visible || !this.mesh.parent?.visible) return;
-    const mat = this.mesh.material as ShaderMaterial;
+    const mat = this.mesh.material;
     const u = mat.uniforms;
     // 奥行きは自分で比べるので、描画の奥行きテストは切る
     u.tDepth.value = this.depth();
@@ -85,7 +84,7 @@ export class HazePass extends Pass {
 
   dispose() {
     this.target.dispose();
-    (this.quad.material as ShaderMaterial).dispose();
+    this.copyMat.dispose();
     this.quad.dispose();
   }
 }

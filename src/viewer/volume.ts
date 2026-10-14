@@ -4,7 +4,7 @@ import {
 } from 'three';
 import { FullScreenQuad, Pass } from 'three/examples/jsm/postprocessing/Pass.js';
 import type { Projector } from './beams';
-import { SMOKE_GLSL, type HazeUniforms } from './beams';
+import { SMOKE_GLSL, type HazeUniforms } from './haze-shader';
 
 const MAX = 8;
 const COOKIES = 4;

@@ -11,19 +11,21 @@ import { FullScreenQuad, Pass } from 'three/examples/jsm/postprocessing/Pass.js'
 export class ScenePass extends Pass {
   readonly target: WebGLRenderTarget;
   private quad: FullScreenQuad;
+  private copyMat: ShaderMaterial;
 
   constructor(private scene: Scene, private camera: Camera, samples: number) {
     super();
     this.needsSwap = false;
     this.target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples });
     this.target.depthTexture = new DepthTexture(1, 1);
-    this.quad = new FullScreenQuad(new ShaderMaterial({
+    this.copyMat = new ShaderMaterial({
       uniforms: { tScene: { value: this.target.texture } },
       vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
       fragmentShader: 'uniform sampler2D tScene; varying vec2 vUv; void main() { gl_FragColor = texture(tScene, vUv); }',
       depthTest: false,
       depthWrite: false,
-    }));
+    });
+    this.quad = new FullScreenQuad(this.copyMat);
   }
 
   get depth() {
@@ -43,7 +45,7 @@ export class ScenePass extends Pass {
 
   dispose() {
     this.target.dispose();
-    (this.quad.material as ShaderMaterial).dispose();
+    this.copyMat.dispose();
     this.quad.dispose();
   }
 }

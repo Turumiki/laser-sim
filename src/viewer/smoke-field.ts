@@ -1,6 +1,6 @@
 import {
   Camera, LinearFilter, LinearMipmapLinearFilter, Mesh, PlaneGeometry, RepeatWrapping, RGFormat, ShaderMaterial, UnsignedByteType,
-  WebGL3DRenderTarget, type Data3DTexture, type WebGLRenderer,
+  WebGL3DRenderTarget, type Texture, type WebGLRenderer,
 } from 'three';
 
 // 煙が渦を巻いてできる細い糸の模様を、3Dテクスチャに焼いておく。
@@ -61,8 +61,8 @@ export class SmokeField {
   private cam = new Camera();
   private started = false;
   readonly uniforms = {
-    uField0: { value: null as Data3DTexture | null },
-    uField1: { value: null as Data3DTexture | null },
+    uField0: { value: null as Texture | null },
+    uField1: { value: null as Texture | null },
     uFieldMix: { value: 0 },
   };
 
@@ -125,8 +125,8 @@ export class SmokeField {
     }
     renderer.setRenderTarget(prev);
     renderer.xr.enabled = xr;
-    this.uniforms.uField0.value = a.rt.texture as unknown as Data3DTexture;
-    this.uniforms.uField1.value = b.rt.texture as unknown as Data3DTexture;
+    this.uniforms.uField0.value = a.rt.texture;
+    this.uniforms.uField1.value = b.rt.texture;
     const m = (t - a.time) / KEY_STEP;
     // 端でぴたりと止まらないよう、なめらかにつなぐ
     this.uniforms.uFieldMix.value = m * m * (3 - 2 * m);
